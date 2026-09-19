@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import AdminDashboard from "./components/AdminDashboard";
 import TeamLogin from "./components/TeamLogin";
+import TeamDashboard from "./components/TeamDashboard";
 import "./styles.css";
 
 const sports = [
@@ -79,6 +80,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [adminOpen, setAdminOpen] = useState(false);
   const [teamLoginOpen, setTeamLoginOpen] = useState(false);
+  const [teamUser, setTeamUser] = useState(null);
   const [adminToken, setAdminToken] = useState(
     () => localStorage.getItem("aagaz-admin-token") || "",
   );
@@ -420,8 +422,10 @@ function App() {
         <TeamLogin
           onClose={() => setTeamLoginOpen(false)}
           onMessage={setMessage}
+          onLogin={(team) => { setTeamUser(team); setTeamLoginOpen(false); }}
         />
       )}
+      {teamUser && <TeamDashboard team={teamUser} onLogout={() => setTeamUser(null)} />}
       {message && (
         <div className="fixed bottom-5 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-lg border border-cyan/30 bg-navy px-5 py-4 text-sm text-slate-200 shadow-2xl">
           {message}

@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export default function TeamLogin({ onClose, onMessage }) {
+export default function TeamLogin({ onClose, onMessage, onLogin }) {
   const [mode, setMode] = useState("login");
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ teamName: "", captainName: "", email: "", password: "" });
@@ -14,7 +14,7 @@ export default function TeamLogin({ onClose, onMessage }) {
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
       const result = await response.json(); if (!response.ok) throw new Error(result.error);
       if (result.token) localStorage.setItem("aagaz-team-token", result.token);
-      onMessage(result.message || `Welcome, ${result.team.teamName}.`); onClose();
+      onMessage(result.message || `Welcome, ${result.team.teamName}.`); onLogin(result.team);
     } catch (error) { onMessage(error.message); } finally { setBusy(false); }
   }
 
