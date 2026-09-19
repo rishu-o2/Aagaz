@@ -1,5 +1,6 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import AdminDashboard from "./components/AdminDashboard";
 import "./styles.css";
 
 const sports = [
@@ -400,7 +401,7 @@ function App() {
         />
       )}
       {adminOpen && (
-        <AdminPanel
+        <AdminDashboard
           token={adminToken}
           onToken={setAdminToken}
           onClose={() => setAdminOpen(false)}
