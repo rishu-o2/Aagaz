@@ -7,7 +7,7 @@ const PORT = Number(process.env.PORT || 3010);
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'aagaz-admin-change-me';
 const ROOT = __dirname;
 const CLIENT_ROOT = path.join(ROOT, 'dist');
-const DATA_DIR = path.join(ROOT, 'data');
+const DATA_DIR = process.env.VERCEL ? path.join('/tmp', 'aagaz-data') : path.join(ROOT, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'club-data.json');
 const sessions = new Map();
 const ACTIVE_SESSION_WINDOW = 30 * 60 * 1000;
@@ -42,7 +42,7 @@ function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
 function passwordMatches(password, stored) { const [salt, hash] = String(stored || '').split(':'); if (!salt || !hash) return false; const derived = crypto.scryptSync(password, salt, 64).toString('hex'); return crypto.timingSafeEqual(Buffer.from(derived, 'hex'), Buffer.from(hash, 'hex')); }
 function publicData(data) { return { tournaments: data.tournaments.map(({ registrations, ...tournament }) => ({ ...tournament, registrationCount: registrations.length })), events: data.events.map(({ registrations, ...event }) => ({ ...event, registrationCount: registrations.length })), liveMatches: data.liveMatches, gallery: data.gallery }; }
 
-const server = http.createServer(async (req, res) => {
+async function handleRequest(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const { pathname } = url;
   try {
@@ -98,5 +98,11 @@ const server = http.createServer(async (req, res) => {
     }
     return send(res, 405, { error: 'Method not allowed.' });
   } catch (error) { console.error(error); return send(res, 500, { error: 'Something went wrong. Please try again.' }); }
-});
-server.listen(PORT, () => console.log(`Aagaz Sports Club running at http://localhost:${PORT}`));
+}
+
+module.exports = handleRequest;
+
+if (require.main === module) {
+  const server = http.createServer(handleRequest);
+  server.listen(PORT, () => console.log(`Aagaz Sports Club running at http://localhost:${PORT}`));
+}
