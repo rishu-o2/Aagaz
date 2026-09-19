@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import AdminLogin from "./AdminLogin";
 import FixtureManager from "./FixtureManager";
 
-export default function AdminDashboard({ token, onToken, onClose, onMessage, onAuthenticated }) {
+export default function AdminDashboard({ token, onToken, onClose, onMessage, onAuthenticated, onLogout }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [adminData, setAdminData] = useState(null);
@@ -39,6 +39,11 @@ export default function AdminDashboard({ token, onToken, onClose, onMessage, onA
     } catch (error) { onMessage(error.message); } finally { setBusy(false); }
   }
 
+  async function logout() {
+    await fetch("/api/admin/logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+    localStorage.removeItem("aagaz-admin-token"); onToken(""); onLogout?.();
+  }
+
   function updateMatch(id, key, value) {
     setLiveMatches((items) => items.map((item) => item.id === id ? { ...item, [key]: key.includes("Score") ? Number(value) : value } : item));
   }
@@ -46,7 +51,7 @@ export default function AdminDashboard({ token, onToken, onClose, onMessage, onA
   if (!token || !adminData) return <AdminLogin email={email} setEmail={setEmail} password={password} setPassword={setPassword} busy={busy} onSubmit={login} onClose={onClose} />;
 
   return <div className="fixed inset-0 z-40 overflow-y-auto bg-ink/95 p-4 backdrop-blur-sm sm:p-8"><div className="mx-auto max-w-6xl">
-    <div className="flex items-start justify-between border-b border-white/10 pb-6"><div><p className="text-xs font-black uppercase tracking-widest text-cyan">{user?.role?.replaceAll("_", " ")}</p><h2 className="mt-2 font-display text-5xl font-bold uppercase">{user?.name || "Staff dashboard"}.</h2><p className="mt-2 text-sm text-slate-500">Your workspace shows only the competition tasks assigned to your role.</p></div><button onClick={onClose} className="text-3xl text-slate-500 hover:text-white">×</button></div>
+    <div className="flex items-start justify-between border-b border-white/10 pb-6"><div><p className="text-xs font-black uppercase tracking-widest text-cyan">{user?.role?.replaceAll("_", " ")}</p><h2 className="mt-2 font-display text-5xl font-bold uppercase">{user?.name || "Staff dashboard"}.</h2><p className="mt-2 text-sm text-slate-500">Your workspace shows only the competition tasks assigned to your role.</p></div><div className="flex items-center gap-3"><button onClick={logout} className="rounded-md border border-white/15 px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-400 hover:border-cyan hover:text-cyan">Log out</button><button onClick={onClose} className="text-3xl text-slate-500 hover:text-white">×</button></div></div>
     {user?.role === "super_admin" && <AccessStats analytics={adminData.analytics} />}
     {(user?.role === "super_admin" || user?.role === "fixture_manager") && <FixtureManager events={events} setEvents={setEvents} tournaments={tournaments} onSave={save} busy={busy} />}
     <div className="mt-6 grid gap-6 lg:grid-cols-[1.15fr_.85fr]">{(user?.role === "super_admin" || user?.role === "scorekeeper") && <Scoreboard liveMatches={liveMatches} updateMatch={updateMatch} save={save} busy={busy} />}{(user?.role === "super_admin" || user?.role === "tournament_manager") && <RegistrationQueue tournaments={tournaments} save={save} />}</div>

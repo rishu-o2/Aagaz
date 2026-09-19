@@ -422,6 +422,7 @@ function App() {
           onClose={() => setAdminOpen(false)}
           onMessage={setMessage}
           onAuthenticated={() => setAccessMode("staff")}
+          onLogout={() => { setAdminToken(""); setAdminOpen(false); setAccessMode(null); }}
         />
       )}
       {teamLoginOpen && (
@@ -431,7 +432,7 @@ function App() {
           onLogin={(team) => { setTeamUser(team); setTeamLoginOpen(false); }}
         />
       )}
-      {teamUser && <TeamDashboard team={teamUser} onLogout={() => setTeamUser(null)} />}
+      {teamUser && <TeamDashboard team={teamUser} onLogout={() => { setTeamUser(null); setAccessMode(null); }} />}
       {message && (
         <div className="fixed bottom-5 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-lg border border-cyan/30 bg-navy px-5 py-4 text-sm text-slate-200 shadow-2xl">
           {message}
