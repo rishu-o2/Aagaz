@@ -1,0 +1,17 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --color-ink: #08131f;
+  --color-navy: #0d1b2a;
+  --color-cyan: #00d4ff;
+  --color-lime: #b8ff4a;
+  --font-display: 'Barlow Condensed', sans-serif;
+  --font-sans: 'DM Sans', sans-serif;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: #08131f; font-family: 'DM Sans', sans-serif; }
+.bg-grid { background-image: linear-gradient(rgba(0, 212, 255, .12) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 212, 255, .12) 1px, transparent 1px); background-size: 44px 44px; mask-image: linear-gradient(to bottom, black, transparent 85%); }
+button { cursor: pointer; }
