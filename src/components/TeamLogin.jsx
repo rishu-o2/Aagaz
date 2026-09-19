@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { firebaseAuth, firebaseConfigured, firestore } from "../firebase";
 
 export default function TeamLogin({ onClose, onMessage, onLogin }) {
   const [mode, setMode] = useState("login");
@@ -10,6 +13,19 @@ export default function TeamLogin({ onClose, onMessage, onLogin }) {
   async function submit(event) {
     event.preventDefault(); setBusy(true);
     try {
+      if (firebaseConfigured) {
+        let credential;
+        if (mode === "login") {
+          credential = await signInWithEmailAndPassword(firebaseAuth, form.email, form.password);
+        } else {
+          credential = await createUserWithEmailAndPassword(firebaseAuth, form.email, form.password);
+          await updateProfile(credential.user, { displayName: form.name });
+          await setDoc(doc(firestore, "teams", credential.user.uid), { teamName: form.name, captainName: form.name, email: form.email.toLowerCase(), status: "pending", members: [{ name: form.name, email: form.email.toLowerCase(), role: "Captain" }], createdAt: serverTimestamp(), loginCount: 0 });
+        }
+        const teamSnapshot = await getDoc(doc(firestore, "teams", credential.user.uid));
+        const team = teamSnapshot.exists() ? { id: credential.user.uid, ...teamSnapshot.data() } : { id: credential.user.uid, teamName: credential.user.displayName || form.name, captainName: credential.user.displayName || form.name, email: credential.user.email, status: "pending", members: [] };
+        localStorage.setItem("aagaz-team-token", await credential.user.getIdToken()); onMessage(mode === "login" ? "Logged in successfully." : "Account created. Log in to continue."); onLogin(team); return;
+      }
       const endpoint = mode === "login" ? "/api/teams/login" : "/api/teams/register";
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
       const result = await response.json(); if (!response.ok) throw new Error(result.error);

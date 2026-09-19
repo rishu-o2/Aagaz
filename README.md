@@ -19,3 +19,14 @@ Before publishing, set a real password in your environment:
 $env:ADMIN_PASSWORD = "your-strong-password"
 npm start
 ```
+
+## Firebase participant authentication
+
+Participant accounts and team rosters use Firebase Authentication and Firestore when the Vite Firebase variables are configured. Copy `.env.example` to `.env.local`, add the Web App values from Firebase Console, enable Email/Password authentication, and publish `firestore.rules`.
+
+```powershell
+Copy-Item .env.example .env.local
+npm run dev
+```
+
+Without Firebase variables, local development falls back to the built-in JSON API so the rest of the application remains runnable.
