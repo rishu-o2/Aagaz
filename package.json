@@ -1,0 +1,19 @@
+{
+  "name": "aagaz-lpu-tournaments",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aagaz LPU tournament organiser platform.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "latest",
+    "@vitejs/plugin-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "tailwindcss": "latest",
+    "vite": "latest"
+  }
+}
