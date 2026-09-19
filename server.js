@@ -12,25 +12,12 @@ const DATA_FILE = path.join(DATA_DIR, 'club-data.json');
 const sessions = new Map();
 
 const initialData = {
-  tournaments: [
-    { id: 'lpu-premier-league', title: 'Aagaz LPU Premier League', sport: 'Cricket', format: 'T10 · Team entry', dates: '10–18 October 2026', deadline: '2026-10-02', venue: 'LPU Cricket Ground', entryFee: '₹1,500 per team', capacity: 16, registrations: [], description: 'An open campus cricket league for student-led teams.' },
-    { id: 'aagaz-five-a-side', title: 'Aagaz 5s Cup', sport: 'Football', format: '5-a-side · Team entry', dates: '25–26 October 2026', deadline: '2026-10-15', venue: 'LPU Main Ground', entryFee: '₹800 per team', capacity: 24, registrations: [], description: 'Fast-paced football for teams ready to own the pitch.' },
-    { id: 'aagaz-badminton-open', title: 'Aagaz Badminton Open', sport: 'Badminton', format: 'Singles · Individual entry', dates: '1 November 2026', deadline: '2026-10-25', venue: 'LPU Indoor Stadium', entryFee: '₹150 per player', capacity: 64, registrations: [], description: 'An open singles draw for every level of campus player.' }
-  ],
-  events: [
-    { id: 'event-football', date: '2026-09-24', sport: 'Football · Inter-University', title: 'Aagaz XI vs Punjab University', venue: 'LPU Main Ground', time: '6:30 PM', registrations: [] },
-    { id: 'event-kabaddi', date: '2026-09-27', sport: 'Kabaddi · Inter-College', title: 'Aagaz Raiders vs Campus Panthers', venue: 'LPU Indoor Stadium', time: '5:00 PM', registrations: [] },
-    { id: 'event-cricket', date: '2026-10-04', sport: 'Cricket · University Cup', title: 'Aagaz Titans vs Tech Warriors', venue: 'LPU Cricket Ground', time: '9:00 AM', registrations: [] }
-  ],
-  liveMatches: [
-    { id: 'live-kabaddi', sport: 'Kabaddi', period: '2nd Half · 28:14', home: 'Aagaz Raiders', away: 'Campus Bulls', homeScore: 28, awayScore: 24, venue: 'LPU Indoor Stadium', isLive: true },
-    { id: 'live-basketball', sport: 'Basketball', period: 'Q3 · 04:52', home: 'Aagaz Hoops', away: 'North Uni', homeScore: 62, awayScore: 59, venue: 'LPU Court 1', isLive: true }
-  ],
+  tournaments: [],
+  events: [],
+  liveMatches: [],
   members: [],
   enquiries: [],
-  gallery: [
-    { id: 'gallery-kabaddi', label: 'Kabaddi', color: '#007a87' }, { id: 'gallery-football', label: 'Football', color: '#315373' }, { id: 'gallery-cricket', label: 'Cricket', color: '#444e86' }, { id: 'gallery-volleyball', label: 'Volleyball', color: '#006c86' }, { id: 'gallery-badminton', label: 'Badminton', color: '#216079' }
-  ],
+  gallery: [],
   teams: [],
   staffUsers: [],
   loginEvents: []

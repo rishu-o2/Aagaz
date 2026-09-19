@@ -17,47 +17,7 @@ const sports = [
 ];
 
 const fallbackData = {
-  tournaments: [
-    {
-      id: "lpu-premier-league",
-      title: "Aagaz LPU Premier League",
-      sport: "Cricket",
-      format: "T10 · Team entry",
-      dates: "10–18 October 2026",
-      deadline: "2026-10-02",
-      venue: "LPU Cricket Ground",
-      entryFee: "₹1,500 per team",
-      capacity: 16,
-      registrationCount: 0,
-      description: "An open campus cricket league for student-led teams.",
-    },
-    {
-      id: "aagaz-five-a-side",
-      title: "Aagaz 5s Cup",
-      sport: "Football",
-      format: "5-a-side · Team entry",
-      dates: "25–26 October 2026",
-      deadline: "2026-10-15",
-      venue: "LPU Main Ground",
-      entryFee: "₹800 per team",
-      capacity: 24,
-      registrationCount: 0,
-      description: "Fast-paced football for teams ready to own the pitch.",
-    },
-    {
-      id: "aagaz-badminton-open",
-      title: "Aagaz Badminton Open",
-      sport: "Badminton",
-      format: "Singles · Individual entry",
-      dates: "1 November 2026",
-      deadline: "2026-10-25",
-      venue: "LPU Indoor Stadium",
-      entryFee: "₹150 per player",
-      capacity: 64,
-      registrationCount: 0,
-      description: "An open singles draw for every level of campus player.",
-    },
-  ],
+  tournaments: [],
   events: [],
   liveMatches: [],
   gallery: [],
@@ -216,18 +176,9 @@ function App() {
               <div className="absolute right-10 top-4 h-80 w-80 rounded-full border border-cyan/30" />
               <div className="absolute right-24 top-20 h-48 w-48 rounded-full border border-cyan/20" />
               <div className="absolute bottom-6 right-0 w-72 border border-white/10 bg-navy/80 p-5 backdrop-blur-md">
-                <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-500">
-                  <span>Featured fixture</span>
-                  <span className="text-cyan">26 Sep</span>
-                </div>
-                <p className="mt-4 font-display text-3xl font-bold uppercase">
-                  Aagaz Raiders
-                  <br />
-                  <span className="text-slate-500">vs</span> Campus Panthers
-                </p>
-                <p className="mt-4 text-xs text-slate-400">
-                  Kabaddi · LPU Indoor Stadium
-                </p>
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Live competition hub</div>
+                <p className="mt-4 font-display text-3xl font-bold uppercase">Your next fixture<br /><span className="text-cyan">starts here.</span></p>
+                <p className="mt-4 text-xs text-slate-400">Real fixtures will appear after an organiser publishes a tournament schedule.</p>
                 <button
                   onClick={() => scrollTo("fixtures")}
                   className="mt-5 text-xs font-black uppercase tracking-widest text-cyan hover:text-white"
