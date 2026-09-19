@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import AdminDashboard from "./components/AdminDashboard";
 import TeamLogin from "./components/TeamLogin";
 import TeamDashboard from "./components/TeamDashboard";
+import AccessPortal from "./components/AccessPortal";
 import "./styles.css";
 
 const sports = [
@@ -81,6 +82,8 @@ function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [teamLoginOpen, setTeamLoginOpen] = useState(false);
   const [teamUser, setTeamUser] = useState(null);
+  const [loginChoice, setLoginChoice] = useState(null);
+  const [accessMode, setAccessMode] = useState(() => localStorage.getItem("aagaz-admin-token") ? "staff" : localStorage.getItem("aagaz-team-token") ? "team" : null);
   const [adminToken, setAdminToken] = useState(
     () => localStorage.getItem("aagaz-admin-token") || "",
   );
@@ -109,6 +112,8 @@ function App() {
   function scrollTo(id) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   }
+
+  if (!accessMode) return <><AccessPortal onTeamLogin={() => setLoginChoice("team")} onStaffLogin={() => setLoginChoice("staff")} />{loginChoice === "team" && <TeamLogin onClose={() => setLoginChoice(null)} onMessage={setMessage} onLogin={(team) => { setTeamUser(team); setAccessMode("team"); setLoginChoice(null); }} />}{loginChoice === "staff" && <AdminDashboard token={adminToken} onToken={setAdminToken} onAuthenticated={() => { setAccessMode("staff"); setLoginChoice(null); }} onClose={() => setLoginChoice(null)} onMessage={setMessage} />}{message && <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-lg border border-cyan/30 bg-navy px-5 py-4 text-sm text-slate-200">{message}</div>}</>;
 
   return (
     <div className="min-h-screen bg-ink text-white">
@@ -416,6 +421,7 @@ function App() {
           onToken={setAdminToken}
           onClose={() => setAdminOpen(false)}
           onMessage={setMessage}
+          onAuthenticated={() => setAccessMode("staff")}
         />
       )}
       {teamLoginOpen && (

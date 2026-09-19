@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import AdminLogin from "./AdminLogin";
 import FixtureManager from "./FixtureManager";
 
-export default function AdminDashboard({ token, onToken, onClose, onMessage }) {
+export default function AdminDashboard({ token, onToken, onClose, onMessage, onAuthenticated }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [adminData, setAdminData] = useState(null);
@@ -26,7 +26,7 @@ export default function AdminDashboard({ token, onToken, onClose, onMessage }) {
     try {
       const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
       const result = await response.json(); if (!response.ok) throw new Error(result.error);
-      localStorage.setItem("aagaz-admin-token", result.token); onToken(result.token);
+      localStorage.setItem("aagaz-admin-token", result.token); onToken(result.token); onAuthenticated?.();
     } catch (error) { onMessage(error.message); } finally { setBusy(false); }
   }
 
