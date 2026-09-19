@@ -5,7 +5,7 @@ export default function AdminLogin({ email, setEmail, password, setPassword, bus
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-widest text-cyan">Staff access</p>
-            <h2 className="mt-2 font-display text-4xl font-bold uppercase">Team workspace</h2>
+            <h2 className="mt-2 font-display text-4xl font-bold uppercase">Staff workspace</h2>
           </div>
           <button onClick={onClose} className="text-2xl text-slate-500 hover:text-white">×</button>
         </div>
