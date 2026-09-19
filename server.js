@@ -30,17 +30,20 @@ const initialData = {
   enquiries: [],
   gallery: [
     { id: 'gallery-kabaddi', label: 'Kabaddi', color: '#007a87' }, { id: 'gallery-football', label: 'Football', color: '#315373' }, { id: 'gallery-cricket', label: 'Cricket', color: '#444e86' }, { id: 'gallery-volleyball', label: 'Volleyball', color: '#006c86' }, { id: 'gallery-badminton', label: 'Badminton', color: '#216079' }
-  ]
+  ],
+  teams: []
 };
 
 function ensureData() { if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR); if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, JSON.stringify(initialData, null, 2)); }
-function readData() { ensureData(); const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); if (!Array.isArray(data.tournaments)) { data.tournaments = initialData.tournaments; writeData(data); } return data; }
+function readData() { ensureData(); const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); let changed = false; if (!Array.isArray(data.tournaments)) { data.tournaments = initialData.tournaments; changed = true; } if (!Array.isArray(data.teams)) { data.teams = []; changed = true; } if (changed) writeData(data); return data; }
 function writeData(data) { fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2)); }
 function id(prefix) { return `${prefix}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`; }
 function send(res, status, value, type = 'application/json') { res.writeHead(status, { 'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-store' }); res.end(type === 'application/json' ? JSON.stringify(value) : value); }
 function body(req) { return new Promise((resolve, reject) => { let raw = ''; req.on('data', chunk => { raw += chunk; if (raw.length > 1_000_000) req.destroy(); }); req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch { reject(new Error('Invalid JSON')); } }); }); }
 function validText(value, max = 500) { return typeof value === 'string' && value.trim().length > 0 && value.trim().length <= max; }
 function isAdmin(req) { const token = (req.headers.authorization || '').replace('Bearer ', ''); return sessions.has(token); }
+function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) { return `${salt}:${crypto.scryptSync(password, salt, 64).toString('hex')}`; }
+function passwordMatches(password, stored) { const [salt, hash] = String(stored || '').split(':'); if (!salt || !hash) return false; const derived = crypto.scryptSync(password, salt, 64).toString('hex'); return crypto.timingSafeEqual(Buffer.from(derived, 'hex'), Buffer.from(hash, 'hex')); }
 function publicData(data) { return { tournaments: data.tournaments.map(({ registrations, ...tournament }) => ({ ...tournament, registrationCount: registrations.length })), events: data.events.map(({ registrations, ...event }) => ({ ...event, registrationCount: registrations.length })), liveMatches: data.liveMatches, gallery: data.gallery }; }
 
 const server = http.createServer(async (req, res) => {
@@ -66,6 +69,14 @@ const server = http.createServer(async (req, res) => {
       const eventId = pathname.split('/')[3], input = await body(req); if (!validText(input.name, 100) || !validText(input.email, 160) || !/^\S+@\S+\.\S+$/.test(input.email)) return send(res, 400, { error: 'Please enter your name and university email.' });
       const data = readData(), event = data.events.find(e => e.id === eventId); if (!event) return send(res, 404, { error: 'Event not found.' }); if (event.registrations.some(r => r.email.toLowerCase() === input.email.trim().toLowerCase())) return send(res, 409, { error: 'You are already registered for this fixture.' });
       event.registrations.push({ id: id('registration'), name: input.name.trim(), email: input.email.trim(), createdAt: new Date().toISOString() }); writeData(data); return send(res, 201, { message: `You are registered for ${event.title}.` });
+    }
+    if (pathname === '/api/teams/register' && req.method === 'POST') {
+      const input = await body(req); if (!validText(input.teamName, 100) || !validText(input.captainName, 100) || !validText(input.email, 160) || !validText(input.password, 120) || input.password.length < 8 || !/^\S+@\S+\.\S+$/.test(input.email)) return send(res, 400, { error: 'Enter a team name, captain, valid email, and an 8-character password.' });
+      const data = readData(); if (data.teams.some(team => team.email.toLowerCase() === input.email.trim().toLowerCase())) return send(res, 409, { error: 'A team account with this email already exists.' });
+      const team = { id: id('team'), teamName: input.teamName.trim(), captainName: input.captainName.trim(), email: input.email.trim().toLowerCase(), passwordHash: hashPassword(input.password), createdAt: new Date().toISOString(), status: 'pending' }; data.teams.unshift(team); writeData(data); return send(res, 201, { message: 'Team account created. You can now sign in.' });
+    }
+    if (pathname === '/api/teams/login' && req.method === 'POST') {
+      const input = await body(req), data = readData(), team = data.teams.find(item => item.email === String(input.email || '').trim().toLowerCase()); if (!team || !passwordMatches(input.password, team.passwordHash)) return send(res, 401, { error: 'Incorrect team email or password.' }); const token = crypto.randomBytes(24).toString('hex'); sessions.set(`team:${token}`, { teamId: team.id, createdAt: Date.now() }); return send(res, 200, { token, team: { id: team.id, teamName: team.teamName, captainName: team.captainName, email: team.email, status: team.status } });
     }
     if (pathname === '/api/admin/login' && req.method === 'POST') { const input = await body(req); if (input.password !== ADMIN_PASSWORD) return send(res, 401, { error: 'Incorrect password.' }); const token = crypto.randomBytes(24).toString('hex'); sessions.set(token, Date.now()); return send(res, 200, { token }); }
     if (pathname === '/api/admin/data' && req.method === 'GET') { if (!isAdmin(req)) return send(res, 401, { error: 'Sign in required.' }); return send(res, 200, readData()); }

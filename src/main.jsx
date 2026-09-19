@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import AdminDashboard from "./components/AdminDashboard";
+import TeamLogin from "./components/TeamLogin";
 import "./styles.css";
 
 const sports = [
@@ -77,6 +78,7 @@ function App() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [teamLoginOpen, setTeamLoginOpen] = useState(false);
   const [adminToken, setAdminToken] = useState(
     () => localStorage.getItem("aagaz-admin-token") || "",
   );
@@ -143,7 +145,13 @@ function App() {
             </button>
           </nav>
           <div className="flex items-center gap-3">
-            <button
+                <button
+                  onClick={() => setTeamLoginOpen(true)}
+                  className="hidden text-xs font-black uppercase tracking-widest text-slate-400 transition hover:text-cyan sm:block"
+                >
+                  Team login
+                </button>
+                <button
               onClick={() => setAdminOpen(true)}
               className="hidden text-xs font-black uppercase tracking-widest text-slate-400 transition hover:text-cyan sm:block"
             >
@@ -405,6 +413,12 @@ function App() {
           token={adminToken}
           onToken={setAdminToken}
           onClose={() => setAdminOpen(false)}
+          onMessage={setMessage}
+        />
+      )}
+      {teamLoginOpen && (
+        <TeamLogin
+          onClose={() => setTeamLoginOpen(false)}
           onMessage={setMessage}
         />
       )}
