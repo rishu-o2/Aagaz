@@ -15,6 +15,7 @@ export default function TeamDashboard({ team, onLogout }) {
     try { const newMember = { name: member.name.trim(), email: member.email.trim().toLowerCase(), role: "Player" }; if (firebaseConfigured) { await updateDoc(doc(firestore, "teams", team.id), { members: arrayUnion(newMember) }); setProfile((current) => ({ ...current, members: [...(current.members || []), newMember] })); setMessage(`${newMember.name} added to your team.`); } else { const response = await fetch("/api/teams/members", { method: "POST", headers: { Authorization: `Bearer ${localStorage.getItem("aagaz-team-token")}`, "Content-Type": "application/json" }, body: JSON.stringify(member) }); const result = await response.json(); if (!response.ok) throw new Error(result.error); setProfile((current) => ({ ...current, members: [...(current.members || []), result.member] })); setMessage(result.message); } setMember({ name: "", email: "" }); } catch (error) { setMessage(error.message); } finally { setBusy(false); }
   }
   function logout() {
+    fetch("/api/teams/logout", { method: "POST", headers: { Authorization: `Bearer ${localStorage.getItem("aagaz-team-token")}` } }).catch(() => {});
     localStorage.removeItem("aagaz-team-token");
     onLogout();
   }
