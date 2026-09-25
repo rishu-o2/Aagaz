@@ -27,6 +27,7 @@ const CLIENT_ROOT = path.join(ROOT, 'dist');
 const DATA_DIR = process.env.VERCEL ? path.join('/tmp', 'aagaz-data') : path.join(ROOT, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'club-data.json');
 const sessions = new Map();
+const otps = new Map();
 const sseClients = new Set();
 const ACTIVE_SESSION_WINDOW = 30 * 60 * 1000;
 
@@ -65,10 +66,7 @@ async function readData() {
   if (!data.staffUsers.length) {
     const password = process.env.STAFF_DEFAULT_PASSWORD || ADMIN_PASSWORD;
     data.staffUsers = [
-      { id: 'staff-admin',       name: 'Aagaz Admin',        email: 'admin@aagaz.in',       role: 'super_admin',        passwordHash: hashPassword(password) },
-      { id: 'staff-tournaments', name: 'Tournament Manager', email: 'tournaments@aagaz.in', role: 'tournament_manager', passwordHash: hashPassword(password) },
-      { id: 'staff-fixtures',    name: 'Fixture Manager',   email: 'fixtures@aagaz.in',    role: 'fixture_manager',    passwordHash: hashPassword(password) },
-      { id: 'staff-scores',      name: 'Scorekeeper',       email: 'scores@aagaz.in',      role: 'scorekeeper',        passwordHash: hashPassword(password) },
+      { id: 'staff-admin', name: 'Aagaz Admin', email: 'rishurebel979@gmail.com', role: 'super_admin', passwordHash: hashPassword(password) }
     ];
     changed = true;
   }
@@ -135,6 +133,47 @@ async function handleRequest(req, res) {
     if (pathname === '/api/teams/members' && req.method === 'POST') { const session = teamSession(req); if (!session) return send(res, 401, { error: 'Team login required.' }); const input = await body(req); if (!validText(input.name, 100) || !validText(input.email, 160) || !/^\S+@\S+\.\S+$/.test(input.email)) return send(res, 400, { error: 'Enter a player name and valid email.' }); const data = await readData(), team = data.teams.find(item => item.id === session.teamId); if (!team) return send(res, 404, { error: 'Team not found.' }); if (!Array.isArray(team.members)) team.members = []; if (team.members.some(member => member.email === input.email.trim().toLowerCase())) return send(res, 409, { error: 'This player is already on your team.' }); team.members.push({ name: input.name.trim(), email: input.email.trim().toLowerCase(), role: 'Player' }); await writeData(data); return send(res, 201, { message: `${input.name.trim()} added to your team.`, member: team.members.at(-1) }); }
     if (pathname === '/api/teams/logout' && req.method === 'POST') { const token = (req.headers.authorization || '').replace('Bearer ', ''); sessions.delete(`team:${token}`); return send(res, 200, { message: 'Team logged out.' }); }
     if (pathname === '/api/auth/login' && req.method === 'POST') { const input = await body(req), data = await readData(), user = data.staffUsers.find(item => item.email === String(input.email || '').trim().toLowerCase()); if (!user || !passwordMatches(input.password, user.passwordHash)) return send(res, 401, { error: 'Incorrect staff email or password.' }); recordLogin(data, 'staff', user); await writeData(data); const session = { type: 'staff', role: user.role, userId: user.id, createdAt: Date.now() }; const token = createSessionToken(session); sessions.set(token, session); return send(res, 200, { token, user: { id: user.id, name: user.name, email: user.email, role: user.role, loginCount: user.loginCount, lastLoginAt: user.lastLoginAt } }); }
+    
+    // ── Password Reset (Staff & Teams) ──────────────────────────────────────────
+    if (pathname === '/api/auth/forgot-password' && req.method === 'POST') {
+      const { email } = await body(req);
+      const data = await readData();
+      const user = data.staffUsers.find(item => item.email === String(email || '').trim().toLowerCase()) || data.teams.find(item => item.email === String(email || '').trim().toLowerCase());
+      if (!user) return send(res, 404, { error: 'Account not found.' });
+      
+      const generatedOtp = crypto.randomInt(100000, 999999).toString();
+      otps.set(user.email, { otp: generatedOtp, expires: Date.now() + 10 * 60000 });
+      
+      // MOCK EMAIL/SMS SENDER (will be wired to SendGrid/Twilio later)
+      console.log(`\n\n=========================================\n[MOCK EMAIL/SMS SENT TO ${user.email}]\nYour Aagaz Password Reset OTP is: ${generatedOtp}\nThis code expires in 10 minutes.\n=========================================\n\n`);
+      
+      return send(res, 200, { message: 'OTP sent successfully.' });
+    }
+    
+    if (pathname === '/api/auth/reset-password' && req.method === 'POST') {
+      const { email, otp, newPassword } = await body(req);
+      if (!email || !otp || !newPassword || newPassword.length < 6) return send(res, 400, { error: 'Invalid input. Password must be at least 6 characters.' });
+      
+      const stored = otps.get(email.toLowerCase());
+      if (!stored || stored.otp !== otp) return send(res, 401, { error: 'Invalid or incorrect OTP.' });
+      if (Date.now() > stored.expires) return send(res, 401, { error: 'OTP has expired. Please request a new one.' });
+      
+      const data = await readData();
+      const staffIdx = data.staffUsers.findIndex(item => item.email === email.toLowerCase());
+      const teamIdx = data.teams.findIndex(item => item.email === email.toLowerCase());
+      
+      if (staffIdx !== -1) {
+        data.staffUsers[staffIdx].passwordHash = hashPassword(newPassword);
+      } else if (teamIdx !== -1) {
+        data.teams[teamIdx].passwordHash = hashPassword(newPassword);
+      } else {
+        return send(res, 404, { error: 'Account not found.' });
+      }
+      
+      otps.delete(email.toLowerCase());
+      await writeData(data);
+      return send(res, 200, { message: 'Password updated successfully.' });
+    }
     if (pathname === '/api/admin/login' && req.method === 'POST') { const input = await body(req); if (input.password !== ADMIN_PASSWORD) return send(res, 401, { error: 'Incorrect password.' }); const data = await readData(), user = data.staffUsers.find((item) => item.role === 'super_admin'); recordLogin(data, 'staff', user); await writeData(data); const token = crypto.randomBytes(24).toString('hex'); sessions.set(token, { type: 'staff', role: 'super_admin', userId: 'staff-admin', createdAt: Date.now() }); return send(res, 200, { token, user: { name: 'Aagaz Admin', role: 'super_admin' } }); }
     if (pathname === '/api/admin/data' && req.method === 'GET') { const session = staffSession(req); if (!session) return send(res, 401, { error: 'Sign in required.' }); const data = await readData(); return send(res, 200, safeAdminData(data, session)); }
     if (pathname === '/api/admin/live-matches' && req.method === 'PUT') { if (!canManage(req, ['super_admin', 'scorekeeper'])) return send(res, 403, { error: 'Scorekeeper access required.' }); const matches = await body(req); if (!Array.isArray(matches)) return send(res, 400, { error: 'Invalid matches.' }); const data = await readData(); data.liveMatches = matches.map(m => ({ id: m.id || id('live'), sport: String(m.sport || 'Match').slice(0, 60), period: String(m.period || 'Starting soon').slice(0, 80), home: String(m.home || 'Home').slice(0, 80), away: String(m.away || 'Away').slice(0, 80), homeScore: Number(m.homeScore) || 0, awayScore: Number(m.awayScore) || 0, venue: String(m.venue || 'University Campus').slice(0, 120), streamUrl: validText(m.streamUrl, 500) ? m.streamUrl.trim() : '', isLive: Boolean(m.isLive) })); await writeData(data);
