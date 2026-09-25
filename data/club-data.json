@@ -52,8 +52,8 @@
       "email": "admin@aagaz.in",
       "role": "super_admin",
       "passwordHash": "36cd74cbabb6c94124b34e7cb8afc30a:d1bb5ac053445b7c51dd2baaa6798c880c996bd1e756356ab990a9662f8af3c98001140622fc0ded15073be06a1c8027e99b6cd299845bf2829a7545c68574c9",
-      "loginCount": 1,
-      "lastLoginAt": "2026-09-25T15:41:28.023Z"
+      "loginCount": 3,
+      "lastLoginAt": "2026-09-25T20:30:39.178Z"
     },
     {
       "id": "staff-tournaments",
@@ -78,6 +78,20 @@
     }
   ],
   "loginEvents": [
+    {
+      "id": "login-1790368239178-3a31fd",
+      "type": "staff",
+      "accountId": "staff-admin",
+      "email": "admin@aagaz.in",
+      "loggedAt": "2026-09-25T20:30:39.178Z"
+    },
+    {
+      "id": "login-1790368176428-06bcf1",
+      "type": "staff",
+      "accountId": "staff-admin",
+      "email": "admin@aagaz.in",
+      "loggedAt": "2026-09-25T20:29:36.428Z"
+    },
     {
       "id": "login-1790350888023-73e1a6",
       "type": "staff",

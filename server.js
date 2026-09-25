@@ -148,6 +148,57 @@ async function handleRequest(req, res) {
     if (pathname === '/api/admin/member-status' && req.method === 'PUT') { if (!canManage(req, ['super_admin'])) return send(res, 403, { error: 'Admin access required.' }); const input = await body(req), data = await readData(), member = data.members.find(m => m.id === input.id); if (!member || !['pending','approved','declined'].includes(input.status)) return send(res, 400, { error: 'Invalid member update.' }); member.status = input.status; await writeData(data); return send(res, 200, { message: 'Membership status updated.' }); }
     if (pathname === '/api/admin/tournament-entry-status' && req.method === 'PUT') { if (!canManage(req, ['super_admin', 'tournament_manager'])) return send(res, 403, { error: 'Tournament manager access required.' }); const input = await body(req), data = await readData(), entry = data.tournaments.flatMap(t => t.registrations).find(r => r.id === input.id); if (!entry || !['pending','approved','declined'].includes(input.status)) return send(res, 400, { error: 'Invalid entry update.' }); entry.status = input.status; await writeData(data); return send(res, 200, { message: 'Tournament entry updated.' }); }
     if (pathname === '/api/admin/logout' && req.method === 'POST') { sessions.delete((req.headers.authorization || '').replace('Bearer ', '')); return send(res, 200, { message: 'Signed out.' }); }
+
+    // ── Announcement ──────────────────────────────────────────────────────────
+    if (pathname === '/api/public/announcement' && req.method === 'GET') { const data = await readData(); return send(res, 200, data.announcement || { active: false, text: '', type: 'info', link: '' }); }
+    if (pathname === '/api/admin/announcement' && req.method === 'PUT') { if (!canManage(req, ['super_admin'])) return send(res, 403, { error: 'Admin access required.' }); const input = await body(req); const data = await readData(); data.announcement = { active: Boolean(input.active), text: String(input.text || '').slice(0, 200), type: ['info','success','warning','urgent'].includes(input.type) ? input.type : 'info', link: validText(input.link, 500) ? input.link.trim() : '' }; await writeData(data); return send(res, 200, { message: 'Announcement saved.' }); }
+
+    // ── CSV Export ────────────────────────────────────────────────────────────
+    if (pathname === '/api/admin/export/registrations' && req.method === 'GET') {
+      if (!canManage(req, ['super_admin', 'tournament_manager'])) return send(res, 403, { error: 'Access denied.' });
+      const data = await readData();
+      const rows = [['Tournament','Name','Email','Course','Entry Type','Team Name','Phone','Status','Date']];
+      data.tournaments.forEach(t => (t.registrations || []).forEach(r => rows.push([t.title, r.name, r.email, r.course || '', r.entryType || '', r.teamName || '', r.phone || '', r.status, r.createdAt?.slice(0,10) || ''])));
+      const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+      res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="registrations.csv"', 'Cache-Control': 'no-store' });
+      return res.end(csv);
+    }
+    if (pathname === '/api/admin/export/members' && req.method === 'GET') {
+      if (!canManage(req, ['super_admin'])) return send(res, 403, { error: 'Access denied.' });
+      const data = await readData();
+      const rows = [['Name','Email','Course','Sport','Phone','Status','Date']];
+      (data.members || []).forEach(m => rows.push([m.name, m.email, m.course || '', m.sport || '', m.phone || '', m.status, m.createdAt?.slice(0,10) || '']));
+      const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+      res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="members.csv"', 'Cache-Control': 'no-store' });
+      return res.end(csv);
+    }
+
+    // ── Staff Invite & Remove ─────────────────────────────────────────────────
+    if (pathname === '/api/admin/staff-invite' && req.method === 'POST') {
+      if (!canManage(req, ['super_admin'])) return send(res, 403, { error: 'Admin access required.' });
+      const input = await body(req);
+      if (!validText(input.name, 100) || !validText(input.email, 160) || !/^\S+@\S+\.\S+$/.test(input.email)) return send(res, 400, { error: 'Enter a valid name and email.' });
+      const validRoles = ['scorekeeper', 'fixture_manager', 'tournament_manager'];
+      if (!validRoles.includes(input.role)) return send(res, 400, { error: 'Invalid role.' });
+      const data = await readData();
+      if (data.staffUsers.some(s => s.email.toLowerCase() === input.email.trim().toLowerCase())) return send(res, 409, { error: 'A staff account with this email already exists.' });
+      const tempPassword = crypto.randomBytes(8).toString('hex');
+      data.staffUsers.push({ id: id('staff'), name: input.name.trim(), email: input.email.trim().toLowerCase(), role: input.role, passwordHash: hashPassword(tempPassword), createdAt: new Date().toISOString(), invited: true });
+      await writeData(data);
+      const inviteLink = `${req.headers.origin || 'http://localhost:3010'}?staff-login=1&email=${encodeURIComponent(input.email.trim())}&temp=${tempPassword}`;
+      return send(res, 201, { message: `Staff account created for ${input.name.trim()}. Share the invite link.`, inviteLink, tempPassword });
+    }
+    if (pathname.match(/^\/api\/admin\/staff\/[^/]+$/) && req.method === 'DELETE') {
+      if (!canManage(req, ['super_admin'])) return send(res, 403, { error: 'Admin access required.' });
+      const staffId = pathname.split('/')[4];
+      const data = await readData();
+      const idx = data.staffUsers.findIndex(s => s.id === staffId && s.role !== 'super_admin');
+      if (idx === -1) return send(res, 404, { error: 'Staff member not found or cannot be removed.' });
+      data.staffUsers.splice(idx, 1);
+      await writeData(data);
+      return send(res, 200, { message: 'Staff member removed.' });
+    }
+
     if (pathname === '/api/stream/live' && req.method === 'GET') { res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' }); const data = await readData(); res.write(`data: ${JSON.stringify(data.liveMatches)}\n\n`); sseClients.add(res); req.on('close', () => sseClients.delete(res)); return; }
     if (req.method === 'GET') {
       const clientPath = pathname === '/' ? '/index.html' : pathname;

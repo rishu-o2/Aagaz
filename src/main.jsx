@@ -5,6 +5,7 @@ import TeamLogin from "./components/TeamLogin";
 import TeamDashboard from "./components/TeamDashboard";
 import AccessPortal from "./components/AccessPortal";
 import { useLiveMatches } from "./hooks/useLiveMatches";
+import { AnnouncementBannerDisplay } from "./components/AnnouncementManager";
 import "./styles.css";
 
 if ('serviceWorker' in navigator) {
@@ -54,6 +55,7 @@ function App() {
   const [adminToken, setAdminToken] = useState(
     () => localStorage.getItem("aagaz-admin-token") || "",
   );
+  const [announcement, setAnnouncement] = useState({ active: false, text: "", type: "info", link: "" });
 
   useEffect(() => {
     fetch("/api/public")
@@ -65,6 +67,11 @@ function App() {
         ),
       )
       .finally(() => setLoading(false));
+
+    fetch("/api/public/announcement")
+      .then(r => r.ok ? r.json() : null)
+      .then(a => { if (a) setAnnouncement(a); })
+      .catch(() => {});
   }, []);
 
   // Real-time: Firestore onSnapshot on Vercel, SSE fallback for local dev
@@ -87,6 +94,13 @@ function App() {
 
   return (
     <div className="min-h-screen bg-ink text-white">
+      {announcement.active && (
+        <div className="sticky top-0 z-40 px-4 py-2 bg-ink/95 backdrop-blur-xl border-b border-white/5">
+          <div className="mx-auto max-w-7xl">
+            <AnnouncementBannerDisplay announcement={announcement} />
+          </div>
+        </div>
+      )}
       <header className="sticky top-0 z-30 border-b border-white/10 bg-ink/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
           <button
@@ -476,9 +490,20 @@ function GallerySection({ gallery }) {
         <p className="mb-3 text-xs font-black uppercase tracking-[.24em] text-cyan">Club moments</p>
         <h2 className="font-display text-6xl font-black uppercase leading-none">The <span className="text-cyan">gallery.</span></h2>
       </div>
-      <div className="flex gap-4 px-5 overflow-x-auto snap-x snap-mandatory pb-8 no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+      <div className="flex gap-4 px-5 overflow-x-auto snap-x snap-mandatory pb-8" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         {gallery.map(item => (
-          <div key={item.id} className="snap-center shrink-0 w-72 h-96 rounded-xl border border-white/10 overflow-hidden relative group flex items-end p-6" style={{ backgroundColor: item.color || '#006c86' }}>
+          <div
+            key={item.id}
+            className="snap-center shrink-0 w-72 h-96 rounded-xl border border-white/10 overflow-hidden relative group flex items-end p-6"
+            style={item.imageUrl ? {} : { backgroundColor: item.color || '#006c86' }}
+          >
+            {item.imageUrl && (
+              <img
+                src={item.imageUrl}
+                alt={item.label}
+                className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105"
+              />
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-ink/90 to-transparent opacity-80" />
             <p className="relative z-10 font-display text-3xl font-bold uppercase text-white group-hover:-translate-y-2 transition duration-300">{item.label}</p>
           </div>
