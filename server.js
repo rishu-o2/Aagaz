@@ -160,7 +160,22 @@ async function handleRequest(req, res) {
       const token = createSessionToken(session); sessions.set(token, session);
       return send(res, 200, { token, user: { id: user.id, name: user.name, email: user.email, role: user.role, loginCount: user.loginCount, lastLoginAt: user.lastLoginAt } });
     }
-    
+
+    // ── Change Password ───────────────────────────────────────────────────────
+    if (pathname === '/api/auth/change-password' && req.method === 'POST') {
+      const session = staffSession(req);
+      if (!session) return send(res, 401, { error: 'Sign in required.' });
+      const { currentPassword, newPassword } = await body(req);
+      if (!currentPassword || !newPassword || newPassword.length < 6) return send(res, 400, { error: 'Invalid input.' });
+      const data = await readData();
+      const user = data.staffUsers.find(u => u.id === session.userId);
+      if (!user) return send(res, 404, { error: 'User not found.' });
+      if (!passwordMatches(currentPassword, user.passwordHash)) return send(res, 401, { error: 'Current password is incorrect.' });
+      user.passwordHash = hashPassword(newPassword);
+      await writeData(data);
+      return send(res, 200, { message: 'Password changed successfully.' });
+    }
+
     // ── Password Reset (Staff & Teams) ──────────────────────────────────────────
     if (pathname === '/api/auth/forgot-password' && req.method === 'POST') {
       const { email } = await body(req);
