@@ -1,11 +1,89 @@
 {
   "tournaments": [],
   "events": [],
-  "liveMatches": [],
+  "liveMatches": [
+    {
+      "id": "live-1",
+      "sport": "Football Championship Semi-final",
+      "period": "72nd Min",
+      "home": "LPU Titans",
+      "away": "Engineering FC",
+      "homeScore": 2,
+      "awayScore": 1,
+      "venue": "Main Stadium",
+      "streamUrl": "https://youtube.com",
+      "isLive": true
+    }
+  ],
   "members": [],
   "enquiries": [],
-  "gallery": [],
+  "gallery": [
+    {
+      "id": "g1",
+      "label": "Victory 2025",
+      "color": "#ff2a5f"
+    },
+    {
+      "id": "g2",
+      "label": "Training Camp",
+      "color": "#00d4ff"
+    },
+    {
+      "id": "g3",
+      "label": "Varsity Finals",
+      "color": "#b8ff4a"
+    },
+    {
+      "id": "g4",
+      "label": "Team Social",
+      "color": "#8a2be2"
+    },
+    {
+      "id": "g5",
+      "label": "Tryouts",
+      "color": "#ff8c00"
+    }
+  ],
   "teams": [],
-  "staffUsers": [],
-  "loginEvents": []
+  "staffUsers": [
+    {
+      "id": "staff-admin",
+      "name": "Aagaz Admin",
+      "email": "admin@aagaz.in",
+      "role": "super_admin",
+      "passwordHash": "36cd74cbabb6c94124b34e7cb8afc30a:d1bb5ac053445b7c51dd2baaa6798c880c996bd1e756356ab990a9662f8af3c98001140622fc0ded15073be06a1c8027e99b6cd299845bf2829a7545c68574c9",
+      "loginCount": 1,
+      "lastLoginAt": "2026-09-25T15:41:28.023Z"
+    },
+    {
+      "id": "staff-tournaments",
+      "name": "Tournament Manager",
+      "email": "tournaments@aagaz.in",
+      "role": "tournament_manager",
+      "passwordHash": "7dde15465574c46a66e8ec3b17e9eb23:d3d8210b487c252539548b136c1d802ab6d878310b748a1c7abfc5d684e5befe5848fcc105f0761142714314d635c5daaf6d0d8c09f7c79dfcbed59ce8a785e3"
+    },
+    {
+      "id": "staff-fixtures",
+      "name": "Fixture Manager",
+      "email": "fixtures@aagaz.in",
+      "role": "fixture_manager",
+      "passwordHash": "3cd260f3959a0f0d189b26fc6fb3a771:de2dd28b009da21d8a8acfe4ff24c76fce4398507066b3881dc09663344e20fc391145560f0cf99dc681435b610b0c65023c47343f7b65a80b9ed0acd87bb5e5"
+    },
+    {
+      "id": "staff-scores",
+      "name": "Scorekeeper",
+      "email": "scores@aagaz.in",
+      "role": "scorekeeper",
+      "passwordHash": "687e5a54437c61525844f07a8f1874b7:7e4ec431f576866680b1edba699cbae7e889c2ff433df49f7b2e597f6d36207dc42b8fa9a8b5b9d5add1dd875ca11024b8670b74dd3d6c86b8dd29ebc5a2945c"
+    }
+  ],
+  "loginEvents": [
+    {
+      "id": "login-1790350888023-73e1a6",
+      "type": "staff",
+      "accountId": "staff-admin",
+      "email": "admin@aagaz.in",
+      "loggedAt": "2026-09-25T15:41:28.023Z"
+    }
+  ]
 }

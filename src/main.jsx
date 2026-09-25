@@ -4,7 +4,14 @@ import AdminDashboard from "./components/AdminDashboard";
 import TeamLogin from "./components/TeamLogin";
 import TeamDashboard from "./components/TeamDashboard";
 import AccessPortal from "./components/AccessPortal";
+import { useLiveMatches } from "./hooks/useLiveMatches";
 import "./styles.css";
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
 
 const sports = [
   "All sports",
@@ -60,6 +67,9 @@ function App() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Real-time: Firestore onSnapshot on Vercel, SSE fallback for local dev
+  const liveMatchesRT = useLiveMatches(data.liveMatches);
+
   const tournaments = useMemo(
     () =>
       filter === "All sports"
@@ -67,7 +77,7 @@ function App() {
         : data.tournaments.filter((tournament) => tournament.sport === filter),
     [data.tournaments, filter],
   );
-  const liveMatches = data.liveMatches.filter((match) => match.isLive);
+  const liveMatches = liveMatchesRT.filter((match) => match.isLive);
 
   function scrollTo(id) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
@@ -109,6 +119,12 @@ function App() {
               className="transition hover:text-cyan"
             >
               How it works
+            </button>
+            <button
+              onClick={() => scrollTo("join")}
+              className="transition hover:text-cyan"
+            >
+              Join Club
             </button>
           </nav>
           <div className="flex items-center gap-3">
@@ -342,6 +358,9 @@ function App() {
             </div>
           </div>
         </section>
+
+        <GallerySection gallery={data.gallery} />
+        <JoinClub onMessage={setMessage} />
       </main>
       <footer className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-8 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-8">
         <span className="font-display text-2xl font-black text-white">
@@ -405,43 +424,110 @@ function LiveCard({ match }) {
       window.open(match.streamUrl, "_blank", "noopener,noreferrer");
   }
   return (
-    <article className="rounded-xl border border-cyan/30 bg-navy p-6 shadow-[0_0_45px_rgba(0,212,255,.06)]">
-      <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-slate-500">
-        <span className="flex items-center gap-2 text-lime">
-          <i className="h-2 w-2 animate-pulse rounded-full bg-lime" /> Live ·{" "}
-          {match.sport}
+    <article className="relative overflow-hidden rounded-xl border border-cyan/40 bg-navy/90 p-8 shadow-[0_0_45px_rgba(0,212,255,.15)] backdrop-blur-xl transition hover:border-cyan hover:shadow-[0_0_60px_rgba(0,212,255,.3)]">
+      {match.isLive && <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-cyan/10 blur-[80px] pointer-events-none" />}
+      <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-slate-400">
+        <span className="flex items-center gap-3 text-lime drop-shadow-[0_0_8px_rgba(184,255,74,0.8)]">
+          <span className="relative flex h-3 w-3 items-center justify-center">
+             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-lime opacity-75"></span>
+             <span className="relative inline-flex h-2 w-2 rounded-full bg-lime"></span>
+          </span>
+          Live · {match.sport}
         </span>
-        <span>{match.period}</span>
+        <span className="bg-white/10 px-3 py-1 rounded-full text-white">{match.period}</span>
       </div>
-      <div className="mt-8 space-y-5">
+      <div className="mt-10 space-y-6">
         {[
           [match.home, match.homeScore],
           [match.away, match.awayScore],
         ].map(([team, score]) => (
           <div key={team} className="flex items-center justify-between">
-            <span className="font-display text-3xl font-bold uppercase">
+            <span className="font-display text-4xl font-bold uppercase truncate max-w-[200px] sm:max-w-[300px]">
               {team}
             </span>
-            <strong className="font-display text-5xl text-cyan">{score}</strong>
+            <strong className="font-display text-6xl text-cyan drop-shadow-[0_0_12px_rgba(0,212,255,0.4)]">{score}</strong>
           </div>
         ))}
       </div>
-      <div className="mt-7 flex items-center justify-between border-t border-white/10 pt-4">
-        <p className="text-xs text-slate-500">{match.venue}</p>
+      <div className="mt-10 flex items-center justify-between border-t border-white/15 pt-5">
+        <p className="text-sm font-bold text-slate-400">{match.venue}</p>
         {match.streamUrl ? (
           <button
             onClick={openStream}
-            className="text-xs font-black uppercase tracking-widest text-cyan hover:text-white"
+            className="flex items-center gap-2 rounded-lg bg-cyan px-4 py-2 text-xs font-black uppercase tracking-wider text-ink transition hover:bg-white hover:scale-105"
           >
-            Watch live ↗
+            Watch Stream <span className="text-lg leading-none">▶</span>
           </button>
         ) : (
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">
-            Stream link pending
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-black/30 px-3 py-1 rounded-full">
+            No stream available
           </span>
         )}
       </div>
     </article>
+  );
+}
+
+function GallerySection({ gallery }) {
+  if (!gallery || gallery.length === 0) return null;
+  return (
+    <section id="gallery" className="py-20 border-t border-white/10 bg-ink overflow-hidden">
+      <div className="mx-auto max-w-7xl px-5 lg:px-8 mb-10">
+        <p className="mb-3 text-xs font-black uppercase tracking-[.24em] text-cyan">Club moments</p>
+        <h2 className="font-display text-6xl font-black uppercase leading-none">The <span className="text-cyan">gallery.</span></h2>
+      </div>
+      <div className="flex gap-4 px-5 overflow-x-auto snap-x snap-mandatory pb-8 no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        {gallery.map(item => (
+          <div key={item.id} className="snap-center shrink-0 w-72 h-96 rounded-xl border border-white/10 overflow-hidden relative group flex items-end p-6" style={{ backgroundColor: item.color || '#006c86' }}>
+            <div className="absolute inset-0 bg-gradient-to-t from-ink/90 to-transparent opacity-80" />
+            <p className="relative z-10 font-display text-3xl font-bold uppercase text-white group-hover:-translate-y-2 transition duration-300">{item.label}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function JoinClub({ onMessage }) {
+  const [form, setForm] = useState({ name: "", email: "", course: "", sport: "", phone: "" });
+  const [busy, setBusy] = useState(false);
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const res = await fetch("/api/memberships", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error);
+      onMessage(result.message);
+      setForm({ name: "", email: "", course: "", sport: "", phone: "" });
+    } catch (err) {
+      onMessage(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section id="join" className="mx-auto max-w-7xl px-5 py-20 lg:px-8 border-t border-white/10">
+      <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
+        <div>
+          <p className="mb-3 text-xs font-black uppercase tracking-[.24em] text-cyan">Official Club</p>
+          <h2 className="font-display text-6xl font-black uppercase leading-none">Become a <span className="text-cyan">member.</span></h2>
+          <p className="mt-6 text-slate-400 text-lg leading-8 max-w-md">Join the university's official sports club. Get access to exclusive training sessions, represent the university, and stay updated with upcoming tryouts.</p>
+        </div>
+        <form onSubmit={submit} className="rounded-xl border border-cyan/20 bg-navy/50 p-8 backdrop-blur-md shadow-[0_0_30px_rgba(0,212,255,0.05)] grid gap-4">
+          <input required placeholder="Full name" value={form.name} onChange={(e)=>setForm({...form, name: e.target.value})} className="rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan" />
+          <input required type="email" placeholder="University email" value={form.email} onChange={(e)=>setForm({...form, email: e.target.value})} className="rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan" />
+          <div className="grid grid-cols-2 gap-4">
+            <input required placeholder="Course" value={form.course} onChange={(e)=>setForm({...form, course: e.target.value})} className="rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan" />
+            <input required placeholder="Primary sport" value={form.sport} onChange={(e)=>setForm({...form, sport: e.target.value})} className="rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan" />
+          </div>
+          <input placeholder="Phone number (optional)" value={form.phone} onChange={(e)=>setForm({...form, phone: e.target.value})} className="rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan" />
+          <button disabled={busy} className="mt-2 rounded-lg bg-cyan px-5 py-4 text-sm font-black uppercase tracking-wider text-ink transition hover:bg-white disabled:opacity-50 hover:shadow-[0_0_20px_rgba(0,212,255,.4)]">
+            {busy ? "Applying..." : "Submit application ↗"}
+          </button>
+        </form>
+      </div>
+    </section>
   );
 }
 function TournamentCard({ tournament, onRegister }) {

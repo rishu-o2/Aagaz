@@ -2,10 +2,26 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Club data document - server-side writes only, public reads for public fields
+    match /aagaz/club-data {
+      // Only authenticated requests can write (done via server with Firebase SDK)
+      allow write: if false;
+      // Public reads are allowed (data is filtered server-side before sending to frontend)
+      allow read: if false;
+    }
+
+    // Team documents: only the authenticated team owner can read/write their data
     match /teams/{teamId} {
       allow read: if request.auth != null && request.auth.uid == teamId;
       allow create: if request.auth != null && request.auth.uid == teamId;
       allow update: if request.auth != null && request.auth.uid == teamId;
+    }
+
+    // Live matches: publicly readable for real-time score updates on the frontend
+    match /liveMatches/{matchId} {
+      allow read: if true;
+      allow write: if false;
     }
   }
 }
