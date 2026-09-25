@@ -15,6 +15,7 @@
     "dotenv": "^18.0.4",
     "firebase": "^12.19.0",
     "firebase-admin": "^14.5.0",
+    "nodemailer": "^10.0.10",
     "react": "latest",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "latest",

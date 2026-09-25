@@ -3,6 +3,11 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 require('dotenv').config({ path: path.join(__dirname, '.env.local') });
+const nodemailer = require('nodemailer');
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+});
 const { initializeApp } = require('firebase/app');
 const { getFirestore, doc, getDoc, setDoc } = require('firebase/firestore');
 
@@ -166,9 +171,27 @@ async function handleRequest(req, res) {
       const generatedOtp = crypto.randomInt(100000, 999999).toString();
       otps.set(user.email, { otp: generatedOtp, expires: Date.now() + 10 * 60000 });
       
-      // MOCK EMAIL/SMS SENDER (will be wired to SendGrid/Twilio later)
-      console.log(`\n\n=========================================\n[MOCK EMAIL/SMS SENT TO ${user.email}]\nYour Aagaz Password Reset OTP is: ${generatedOtp}\nThis code expires in 10 minutes.\n=========================================\n\n`);
-      
+      try {
+        if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+          await transporter.sendMail({
+            from: `"Aagaz Sports" <${process.env.EMAIL_USER}>`,
+            to: user.email,
+            subject: 'Aagaz Password Reset OTP',
+            html: `
+              <div style="font-family: sans-serif; padding: 20px;">
+                <h2>Password Reset Request</h2>
+                <p>Your OTP for resetting your Aagaz password is:</p>
+                <h1 style="color: #006c86; font-size: 32px; letter-spacing: 5px;">${generatedOtp}</h1>
+                <p>This code expires in 10 minutes.</p>
+              </div>
+            `
+          });
+        } else {
+          console.log(`[MOCK EMAIL to ${user.email}] OTP: ${generatedOtp}`);
+        }
+      } catch (err) {
+        console.error("Failed to send OTP email:", err);
+      }
       return send(res, 200, { message: 'OTP sent successfully.' });
     }
     
@@ -247,7 +270,29 @@ async function handleRequest(req, res) {
       data.staffUsers.push({ id: id('staff'), name: input.name.trim(), email: input.email.trim().toLowerCase(), role: input.role, passwordHash: hashPassword(tempPassword), createdAt: new Date().toISOString(), invited: true });
       await writeData(data);
       const inviteLink = `${req.headers.origin || 'http://localhost:3010'}?staff-login=1&email=${encodeURIComponent(input.email.trim())}&temp=${tempPassword}`;
-      return send(res, 201, { message: `Staff account created for ${input.name.trim()}. Share the invite link.`, inviteLink, tempPassword });
+      try {
+        if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+          await transporter.sendMail({
+            from: `"Aagaz Sports Club" <${process.env.EMAIL_USER}>`,
+            to: input.email.trim(),
+            subject: `You're invited to join Aagaz Sports Club as ${input.role.replace(/_/g, ' ')}`,
+            html: `
+              <div style="font-family: sans-serif; padding: 20px; max-width: 560px;">
+                <h2>Welcome to Aagaz Sports Club, ${input.name.trim()}! 🎉</h2>
+                <p>You have been added as a <strong>${input.role.replace(/_/g, ' ')}</strong>.</p>
+                <p>Use the following credentials to log in for the first time:</p>
+                <p><strong>Email:</strong> ${input.email.trim()}</p>
+                <p><strong>Temporary Password:</strong> <code style="background:#f0f0f0;padding:4px 8px;border-radius:4px;">${tempPassword}</code></p>
+                <p>Please change your password after logging in.</p>
+                <a href="${inviteLink}" style="display:inline-block;background:#006c86;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;margin-top:10px;">Login to Dashboard →</a>
+              </div>
+            `
+          });
+        }
+      } catch (err) {
+        console.error("Failed to send invite email:", err);
+      }
+      return send(res, 201, { message: `Staff account created for ${input.name.trim()}. An invite email has been sent.`, inviteLink, tempPassword });
     }
     if (pathname.match(/^\/api\/admin\/staff\/[^/]+$/) && req.method === 'DELETE') {
       if (!canManage(req, ['super_admin'])) return send(res, 403, { error: 'Admin access required.' });
