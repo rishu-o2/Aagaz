@@ -11,11 +11,10 @@ service cloud.firestore {
       allow read: if false;
     }
 
-    // Team documents: only the authenticated team owner can read/write their data
+    // Team formation is controlled by tournament staff through the server API.
+    // Participants do not create standalone team documents.
     match /teams/{teamId} {
-      allow read: if request.auth != null && request.auth.uid == teamId;
-      allow create: if request.auth != null && request.auth.uid == teamId;
-      allow update: if request.auth != null && request.auth.uid == teamId;
+      allow read, write: if false;
     }
 
     // Live matches: publicly readable for real-time score updates on the frontend

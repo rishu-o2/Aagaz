@@ -22,7 +22,9 @@ npm start
 
 ## Firebase participant authentication
 
-Participant accounts and team rosters use Firebase Authentication and Firestore when the Vite Firebase variables are configured. Copy `.env.example` to `.env.local`, add the Web App values from Firebase Console, enable Email/Password authentication, and publish `firestore.rules`.
+Participants register individually for a tournament. They can sign in with email/password, Google, or phone OTP to see only registrations that match their verified account and university registration number. A tournament manager builds teams from approved entries in the staff dashboard; participants cannot create teams or change team rosters. Enable Email/Password, Google, and Phone in Firebase Console > Authentication > Sign-in method, add the app's domain to Authorized domains, and publish `firestore.rules`. Phone OTP also needs Firebase's reCAPTCHA/SMS setup.
+
+University registration numbers are required for tournament entries and staff access. Staff continue to use their separate email/password workspace.
 
 ```powershell
 Copy-Item .env.example .env.local

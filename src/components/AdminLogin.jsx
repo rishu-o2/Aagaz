@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export default function AdminLogin({ email, setEmail, password, setPassword, busy, onSubmit, onClose, onMessage }) {
+export default function AdminLogin({ email, setEmail, password, setPassword, universityRegistrationNumber, setUniversityRegistrationNumber, busy, onSubmit, onClose, onMessage }) {
   const [mode, setMode] = useState("login"); // "login", "forgot", "otp"
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -65,6 +65,7 @@ export default function AdminLogin({ email, setEmail, password, setPassword, bus
           <form onSubmit={onSubmit} className="mt-7 grid gap-3">
             <input autoFocus type="email" required placeholder="Staff email" value={email} onChange={(event) => setEmail(event.target.value)} className="rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan" />
             <input type="password" required placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} className="rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan" />
+            <input required placeholder="University registration number" value={universityRegistrationNumber} onChange={(event) => setUniversityRegistrationNumber(event.target.value)} className="rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan" />
             <button disabled={busy} className="rounded-lg bg-cyan px-5 py-4 text-sm font-black uppercase tracking-wider text-ink disabled:opacity-50">{busy ? "Signing in..." : "Open dashboard ↗"}</button>
             <button type="button" onClick={() => setMode("forgot")} className="text-xs text-slate-400 hover:text-white text-center mt-2">Forgot password?</button>
           </form>

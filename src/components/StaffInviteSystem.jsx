@@ -7,7 +7,7 @@ const ROLES = [
 ];
 
 export default function StaffInviteSystem({ staffUsers, token, onMessage, onRefresh }) {
-  const [form, setForm] = useState({ name: "", email: "", role: "scorekeeper" });
+  const [form, setForm] = useState({ name: "", email: "", universityRegistrationNumber: "", role: "scorekeeper" });
   const [busy, setBusy] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
 
@@ -25,7 +25,7 @@ export default function StaffInviteSystem({ staffUsers, token, onMessage, onRefr
       if (!res.ok) throw new Error(result.error);
       onMessage(result.message);
       setInviteLink(result.inviteLink || "");
-      setForm({ name: "", email: "", role: "scorekeeper" });
+      setForm({ name: "", email: "", universityRegistrationNumber: "", role: "scorekeeper" });
       onRefresh?.();
     } catch (err) {
       onMessage(err.message);
@@ -67,7 +67,7 @@ export default function StaffInviteSystem({ staffUsers, token, onMessage, onRefr
           <div key={staff.id} className="flex items-center justify-between rounded-lg border border-white/10 bg-ink p-3">
             <div>
               <p className="font-bold text-sm">{staff.name}</p>
-              <p className="text-xs text-slate-500">{staff.email} · <span className={`font-bold ${roleColors[staff.role] || "text-slate-400"}`}>{staff.role?.replaceAll("_", " ")}</span></p>
+              <p className="text-xs text-slate-500">{staff.email} · Reg: {staff.universityRegistrationNumber || "set at first login"} · <span className={`font-bold ${roleColors[staff.role] || "text-slate-400"}`}>{staff.role?.replaceAll("_", " ")}</span></p>
             </div>
             <div className="flex items-center gap-3">
               {staff.lastLoginAt && <span className="text-[10px] text-slate-600">Last login {new Date(staff.lastLoginAt).toLocaleDateString()}</span>}
@@ -102,6 +102,7 @@ export default function StaffInviteSystem({ staffUsers, token, onMessage, onRefr
               className="rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan"
             />
           </div>
+          <input required placeholder="Staff university registration number" value={form.universityRegistrationNumber} onChange={e => setForm({ ...form, universityRegistrationNumber: e.target.value })} className="rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan" />
           <div className="grid grid-cols-3 gap-3">
             {ROLES.map(role => (
               <button

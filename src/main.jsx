@@ -49,9 +49,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [adminOpen, setAdminOpen] = useState(false);
   const [teamLoginOpen, setTeamLoginOpen] = useState(false);
-  const [teamUser, setTeamUser] = useState(null);
+  const [teamUser, setTeamUser] = useState(() => readParticipantProfile());
   const [loginChoice, setLoginChoice] = useState(null);
-  const [accessMode, setAccessMode] = useState(() => localStorage.getItem("aagaz-admin-token") ? "staff" : localStorage.getItem("aagaz-team-token") ? "team" : null);
+  const [accessMode, setAccessMode] = useState(() => localStorage.getItem("aagaz-admin-token") ? "staff" : localStorage.getItem("aagaz-participant-token") && readParticipantProfile() ? "team" : null);
   const [adminToken, setAdminToken] = useState(
     () => localStorage.getItem("aagaz-admin-token") || "",
   );
@@ -146,7 +146,7 @@ function App() {
                   onClick={() => setTeamLoginOpen(true)}
                   className="hidden text-xs font-black uppercase tracking-widest text-slate-400 transition hover:text-cyan sm:block"
                 >
-                  Team login
+                  Participant login
                 </button>
                 <button
               onClick={() => setAdminOpen(true)}
@@ -432,6 +432,10 @@ function App() {
   );
 }
 
+function readParticipantProfile() {
+  try { return JSON.parse(localStorage.getItem("aagaz-participant-profile") || "null"); } catch { return null; }
+}
+
 function LiveCard({ match }) {
   function openStream() {
     if (match.streamUrl)
@@ -631,8 +635,8 @@ function RegistrationModal({ tournament, onClose, onMessage }) {
     name: "",
     email: "",
     course: "",
+    universityRegistrationNumber: "",
     entryType: tournament.format.includes("Individual") ? "Individual" : "Team",
-    teamName: "",
     phone: "",
   });
   const [busy, setBusy] = useState(false);
@@ -682,12 +686,13 @@ function RegistrationModal({ tournament, onClose, onMessage }) {
             ["name", "Full name"],
             ["email", "Email address"],
             ["course", "Course / university"],
-            ["phone", "Phone number"],
+            ["universityRegistrationNumber", "University registration number"],
+            ["phone", "Phone number (+ country code)"],
           ].map(([key, label]) => (
             <input
               key={key}
-              required={key !== "phone"}
-              type={key === "email" ? "email" : "text"}
+              required
+              type={key === "email" ? "email" : key === "phone" ? "tel" : "text"}
               placeholder={label}
               value={form[key]}
               onChange={(event) =>
@@ -696,17 +701,6 @@ function RegistrationModal({ tournament, onClose, onMessage }) {
               className="rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan"
             />
           ))}
-          {form.entryType === "Team" && (
-            <input
-              required
-              placeholder="Team name"
-              value={form.teamName}
-              onChange={(event) =>
-                setForm({ ...form, teamName: event.target.value })
-              }
-              className="rounded-lg border border-white/10 bg-ink px-4 py-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan"
-            />
-          )}
           <button
             disabled={busy}
             className="mt-3 rounded-lg bg-cyan px-5 py-4 text-sm font-black uppercase tracking-wider text-ink disabled:opacity-50"

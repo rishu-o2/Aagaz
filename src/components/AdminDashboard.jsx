@@ -9,6 +9,7 @@ import StaffInviteSystem from "./StaffInviteSystem";
 export default function AdminDashboard({ token, onToken, onClose, onMessage, onAuthenticated, onLogout }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [universityRegistrationNumber, setUniversityRegistrationNumber] = useState("");
   const [adminData, setAdminData] = useState(null);
   const [events, setEvents] = useState([]);
   const [liveMatches, setLiveMatches] = useState([]);
@@ -39,7 +40,7 @@ export default function AdminDashboard({ token, onToken, onClose, onMessage, onA
   async function login(event) {
     event.preventDefault(); setBusy(true);
     try {
-      const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+      const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, universityRegistrationNumber }) });
       const result = await response.json(); if (!response.ok) throw new Error(result.error);
       localStorage.setItem("aagaz-admin-token", result.token); onToken(result.token); onAuthenticated?.();
     } catch (error) { onMessage(error.message); } finally { setBusy(false); }
@@ -50,8 +51,8 @@ export default function AdminDashboard({ token, onToken, onClose, onMessage, onA
     try {
       const response = await fetch(path, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const result = await response.json(); if (!response.ok) throw new Error(result.error);
-      onMessage(result.message || label); await loadAdminData(token);
-    } catch (error) { onMessage(error.message); } finally { setBusy(false); }
+      onMessage(result.message || label); await loadAdminData(token); return true;
+    } catch (error) { onMessage(error.message); return false; } finally { setBusy(false); }
   }
 
   async function logout() {
@@ -76,7 +77,7 @@ export default function AdminDashboard({ token, onToken, onClose, onMessage, onA
     w.document.close(); w.print();
   }
 
-  if (!token || !adminData) return <AdminLogin email={email} setEmail={setEmail} password={password} setPassword={setPassword} busy={busy} onSubmit={login} onClose={onClose} />;
+  if (!token || !adminData) return <AdminLogin email={email} setEmail={setEmail} password={password} setPassword={setPassword} universityRegistrationNumber={universityRegistrationNumber} setUniversityRegistrationNumber={setUniversityRegistrationNumber} busy={busy} onSubmit={login} onClose={onClose} />;
 
   const pendingEntries = tournaments.flatMap(t => (t.registrations || []).filter(r => r.status === "pending")).length;
   const pendingMembers = members.filter(m => m.status === "pending").length;
@@ -264,10 +265,54 @@ function Scoreboard({ liveMatches, setLiveMatches, updateMatch, save, busy }) {
 
 function RegistrationQueue({ tournaments, save }) {
   const [filter, setFilter] = useState("pending");
+  const teamTournaments = tournaments.filter(tournament => /team/i.test(tournament.format || "") || (tournament.registrations || []).some(entry => entry.entryType === "Team"));
+  const [teamTournamentId, setTeamTournamentId] = useState(teamTournaments[0]?.id || "");
+  const [teamName, setTeamName] = useState("");
+  const [selectedEntries, setSelectedEntries] = useState([]);
+  const [creatingTeam, setCreatingTeam] = useState(false);
+  const activeTeamTournament = teamTournaments.find(tournament => tournament.id === teamTournamentId);
+  const eligibleEntries = (activeTeamTournament?.registrations || []).filter(entry => entry.status === "approved");
   const entries = tournaments.flatMap(t => (t.registrations || []).map(r => ({ ...r, tournament: t.title })));
   const filtered = filter === "all" ? entries : entries.filter(e => e.status === filter);
+
+  async function createTournamentTeam(event) {
+    event.preventDefault();
+    setCreatingTeam(true);
+    try {
+      const saved = await save("/api/admin/tournament-teams", { tournamentId: teamTournamentId, name: teamName, registrationIds: selectedEntries }, "Tournament team created.");
+      if (saved) { setTeamName(""); setSelectedEntries([]); }
+    } finally {
+      setCreatingTeam(false);
+    }
+  }
+
   return (
     <section className="rounded-xl border border-white/10 bg-navy p-5">
+      <div className="mb-8 rounded-xl border border-cyan/20 bg-ink p-5">
+        <p className="text-xs font-black uppercase tracking-widest text-cyan">Club team formation</p>
+        <h3 className="mt-1 font-display text-3xl font-bold uppercase">Build teams from approved entries</h3>
+        <p className="mt-2 text-sm text-slate-500">Participants register individually. Select approved entries to form each tournament team; participants cannot create or edit teams.</p>
+        {teamTournaments.length ? <>
+          <select value={teamTournamentId} onChange={event => { setTeamTournamentId(event.target.value); setSelectedEntries([]); }} className="mt-4 w-full rounded border border-white/10 bg-navy p-3 text-sm text-white">
+            {teamTournaments.map(tournament => <option key={tournament.id} value={tournament.id}>{tournament.title}</option>)}
+          </select>
+          <form onSubmit={createTournamentTeam} className="mt-4 grid gap-3">
+            <input required placeholder="Team name" value={teamName} onChange={event => setTeamName(event.target.value)} className="rounded border border-white/10 bg-navy p-3 text-sm outline-none placeholder:text-slate-600 focus:border-cyan" />
+            <div className="grid gap-2 sm:grid-cols-2">
+              {eligibleEntries.map(entry => <label key={entry.id} className="flex cursor-pointer items-start gap-3 rounded border border-white/10 bg-navy p-3 text-sm">
+                <input type="checkbox" checked={selectedEntries.includes(entry.id)} onChange={event => setSelectedEntries(current => event.target.checked ? [...current, entry.id] : current.filter(id => id !== entry.id))} className="mt-1 accent-cyan" />
+                <span><strong>{entry.name}</strong><span className="block text-xs text-slate-500">{entry.universityRegistrationNumber} · {entry.email}</span>{entry.assignedTeamName && <span className="block text-xs text-cyan">Currently assigned: {entry.assignedTeamName}</span>}</span>
+              </label>)}
+            </div>
+            <button disabled={creatingTeam || selectedEntries.length < 2} className="rounded bg-cyan px-4 py-3 text-xs font-black uppercase tracking-widest text-ink disabled:opacity-40">{creatingTeam ? "Creating team..." : `Create team from ${selectedEntries.length} entries`}</button>
+          </form>
+          <div className="mt-5 space-y-2">
+            {(activeTeamTournament?.teams || []).map(team => <div key={team.id} className="rounded border border-white/10 p-3"><p className="font-bold">{team.name}</p><p className="text-xs text-slate-500">{team.registrationIds.length} assigned participants</p></div>)}
+            {!activeTeamTournament?.teams?.length && <p className="text-xs text-slate-500">No teams created for this tournament yet.</p>}
+            {!eligibleEntries.length && <p className="text-xs text-slate-500">Approve participant entries before assigning them to teams.</p>}
+          </div>
+        </> : <p className="mt-4 text-sm text-slate-500">Create a tournament with a team format to form tournament teams here.</p>}
+      </div>
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <h3 className="font-display text-3xl font-bold uppercase">Tournament Entries</h3>
         <div className="flex gap-1 rounded-lg border border-white/10 p-1">
@@ -283,7 +328,7 @@ function RegistrationQueue({ tournaments, save }) {
               <div>
                 <p className="font-bold text-sm">{entry.name}</p>
                 <p className="text-xs text-slate-400 mt-0.5">{entry.email}{entry.phone && ` · 📞 ${entry.phone}`}</p>
-                <p className="text-xs text-slate-500 mt-0.5"><span className="text-cyan">{entry.tournament}</span>{entry.teamName && ` · Team: ${entry.teamName}`}{entry.course && ` · ${entry.course}`}{entry.entryType && ` · ${entry.entryType}`}</p>
+                <p className="text-xs text-slate-500 mt-0.5"><span className="text-cyan">{entry.tournament}</span> · Reg: {entry.universityRegistrationNumber}{entry.assignedTeamName && ` · Team: ${entry.assignedTeamName}`}{entry.course && ` · ${entry.course}`}{entry.entryType && ` · ${entry.entryType}`}</p>
                 {entry.members && entry.members.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">{entry.members.map((m, i) => <span key={i} className="rounded-full bg-white/5 border border-white/10 px-2 py-0.5 text-[10px] text-slate-400">{m.name || m}</span>)}</div>
                 )}

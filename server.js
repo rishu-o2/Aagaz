@@ -114,11 +114,33 @@ function canManage(req, roles) { const session = staffSession(req); return Boole
 async function isOwnerAdmin(req) { const session = staffSession(req); if (!session) return false; const data = await readData(); return Boolean(data.staffUsers.find((user) => user.id === session.userId)?.isOwner); }
 function teamSession(req) { const token = (req.headers.authorization || '').replace('Bearer ', ''); const session = sessions.get(`team:${token}`); if (!session || session.type !== 'participant') return null; session.lastSeenAt = Date.now(); return session; }
 function recordLogin(data, type, account) { const loggedAt = new Date().toISOString(); account.loginCount = (account.loginCount || 0) + 1; account.lastLoginAt = loggedAt; data.loginEvents.unshift({ id: id('login'), type, accountId: account.id, email: account.email, loggedAt }); data.loginEvents = data.loginEvents.slice(0, 1000); }
-function safeAdminData(data, user) { const now = Date.now(); const active = [...sessions.values()].filter((session) => now - (session.lastSeenAt || session.createdAt) < ACTIVE_SESSION_WINDOW && session.userId !== '_dev'); return { ...data, teams: data.teams.map(({ passwordHash, ...team }) => team), staffUsers: data.staffUsers.map(({ passwordHash, isPlatformMaker, ...staff }) => staff), loginEvents: data.loginEvents, analytics: { totalParticipantAccounts: data.teams.length, totalStaffAccounts: data.staffUsers.length, totalLogins: data.loginEvents.length, participantLogins: data.loginEvents.filter((event) => event.type === 'participant').length, staffLogins: data.loginEvents.filter((event) => event.type === 'staff').length, activeParticipants: active.filter((session) => session.type === 'participant').length, activeStaff: active.filter((session) => session.type === 'staff').length, lastLoginAt: data.loginEvents[0]?.loggedAt || null }, user }; }
+function safeAdminData(data, user) { const now = Date.now(); const active = [...sessions.values()].filter((session) => now - (session.lastSeenAt || session.createdAt) < ACTIVE_SESSION_WINDOW && session.userId !== '_dev'); return { ...data, teams: data.teams.map(({ passwordHash, ...team }) => team), staffUsers: data.staffUsers.map(({ passwordHash, isPlatformMaker, ...staff }) => staff), loginEvents: data.loginEvents, analytics: { totalParticipantAccounts: data.tournaments.reduce((count, tournament) => count + (tournament.teams || []).length, 0), totalStaffAccounts: data.staffUsers.length, totalLogins: data.loginEvents.length, participantLogins: data.loginEvents.filter((event) => event.type === 'participant').length, staffLogins: data.loginEvents.filter((event) => event.type === 'staff').length, activeParticipants: active.filter((session) => session.type === 'participant').length, activeStaff: active.filter((session) => session.type === 'staff').length, lastLoginAt: data.loginEvents[0]?.loggedAt || null }, user }; }
 
-function generateFixtures(data, tournament) { const approved = tournament.registrations.filter((entry) => entry.status === 'approved'); if (approved.length < 2) return { error: 'At least two approved teams are required.' }; const existing = data.events.filter((event) => event.tournamentId === tournament.id); if (existing.length) return { error: 'Fixtures already exist for this tournament.' }; const teams = approved.map((entry) => entry.teamName || entry.name); const events = []; for (let index = 0; index < teams.length - 1; index += 1) { for (let opponent = index + 1; opponent < teams.length; opponent += 1) { events.push({ id: id('fixture'), tournamentId: tournament.id, date: '', sport: tournament.sport, title: `${teams[index]} vs ${teams[opponent]}`, venue: tournament.venue, time: 'TBA', registrations: [], status: 'scheduled', homeTeam: teams[index], awayTeam: teams[opponent], homeScore: 0, awayScore: 0 }); } } return { events }; }
+function generateFixtures(data, tournament) { const approved = tournament.registrations.filter((entry) => entry.status === 'approved'); if (approved.length < 2) return { error: 'At least two approved entries are required.' }; const existing = data.events.filter((event) => event.tournamentId === tournament.id); if (existing.length) return { error: 'Fixtures already exist for this tournament.' }; const isTeamFormat = /team/i.test(tournament.format) || approved.some(entry => entry.entryType === 'Team'); const teams = isTeamFormat ? (tournament.teams || []).map(team => team.name) : [...new Set(approved.map(entry => entry.name))]; if (teams.length < 2) return { error: 'Create at least two teams from approved entries before generating fixtures.' }; const events = []; for (let index = 0; index < teams.length - 1; index += 1) { for (let opponent = index + 1; opponent < teams.length; opponent += 1) { events.push({ id: id('fixture'), tournamentId: tournament.id, date: '', sport: tournament.sport, title: `${teams[index]} vs ${teams[opponent]}`, venue: tournament.venue, time: 'TBA', registrations: [], status: 'scheduled', homeTeam: teams[index], awayTeam: teams[opponent], homeScore: 0, awayScore: 0 }); } } return { events }; }
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) { return `${salt}:${crypto.scryptSync(password, salt, 64).toString('hex')}`; }
 function passwordMatches(password, stored) { const [salt, hash] = String(stored || '').split(':'); if (!salt || !hash) return false; const derived = crypto.scryptSync(password, salt, 64).toString('hex'); return crypto.timingSafeEqual(Buffer.from(derived, 'hex'), Buffer.from(hash, 'hex')); }
+async function verifyFirebaseIdentity(idToken) {
+  if (!process.env.VITE_FIREBASE_API_KEY) return null;
+  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(process.env.VITE_FIREBASE_API_KEY)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }) });
+  if (!response.ok) return null;
+  const body = await response.json();
+  return body.users?.[0] || null;
+}
+function participantDashboardData(data, identity, registrationNumber) {
+  const email = String(identity.email || '').trim().toLowerCase();
+  const phone = String(identity.phoneNumber || '').replace(/\D/g, '');
+  const entries = [];
+  for (const tournament of data.tournaments) {
+    for (const entry of tournament.registrations || []) {
+      const sameId = entry.universityRegistrationNumber?.trim().toLowerCase() === registrationNumber.toLowerCase();
+      const sameIdentity = (email && entry.email?.trim().toLowerCase() === email) || (phone && String(entry.phone || '').replace(/\D/g, '') === phone);
+      if (!sameId || !sameIdentity) continue;
+      const squad = (tournament.teams || []).find(team => (team.registrationIds || []).includes(entry.id));
+      entries.push({ id: entry.id, tournamentId: tournament.id, tournamentName: tournament.title, sport: tournament.sport, date: tournament.dates, status: entry.status, entryType: entry.entryType, teamName: squad?.name || entry.assignedTeamName || '', teammates: squad ? (tournament.registrations || []).filter(member => squad.registrationIds.includes(member.id)).map(member => ({ name: member.name })) : [] });
+    }
+  }
+  return entries;
+}
 function publicData(data) { return { tournaments: data.tournaments.map(({ registrations, ...tournament }) => ({ ...tournament, registrationCount: registrations.length })), events: data.events.map(({ registrations, ...event }) => ({ ...event, registrationCount: registrations.length })), liveMatches: data.liveMatches, gallery: data.gallery }; }
 
 async function handleRequest(req, res) {
@@ -136,9 +158,9 @@ async function handleRequest(req, res) {
       data.members.unshift({ id: id('member'), name: input.name.trim(), email: input.email.trim(), course: input.course.trim(), sport: input.sport.trim(), phone: (input.phone || '').trim(), createdAt: new Date().toISOString(), status: 'pending' }); await writeData(data); return send(res, 201, { message: 'Application submitted. The sports office will contact you soon.' });
     }
     if (pathname.match(/^\/api\/tournaments\/[^/]+\/register$/) && req.method === 'POST') {
-      const tournamentId = pathname.split('/')[3], input = await body(req); if (!validText(input.name, 100) || !validText(input.email, 160) || !validText(input.course, 120) || !validText(input.entryType, 30) || !/^\S+@\S+\.\S+$/.test(input.email)) return send(res, 400, { error: 'Complete all required fields with a valid email.' });
-      const data = await readData(), tournament = data.tournaments.find(t => t.id === tournamentId); if (!tournament) return send(res, 404, { error: 'Tournament not found.' }); if (tournament.registrations.length >= tournament.capacity) return send(res, 409, { error: 'This tournament is full.' }); if (tournament.registrations.some(r => r.email.toLowerCase() === input.email.trim().toLowerCase())) return send(res, 409, { error: 'You already have an entry in this tournament.' }); if (input.entryType === 'Team' && !validText(input.teamName, 80)) return send(res, 400, { error: 'Enter your team name to continue.' });
-      tournament.registrations.push({ id: id('entry'), name: input.name.trim(), email: input.email.trim(), course: input.course.trim(), entryType: input.entryType.trim(), teamName: (input.teamName || '').trim(), phone: (input.phone || '').trim(), createdAt: new Date().toISOString(), status: 'pending' }); await writeData(data); return send(res, 201, { message: `Entry received for ${tournament.title}. The organisers will review it shortly.` });
+      const tournamentId = pathname.split('/')[3], input = await body(req); if (!validText(input.name, 100) || !validText(input.email, 160) || !validText(input.course, 120) || !validText(input.phone, 30) || !/^\+[1-9]\d{7,14}$/.test(input.phone.trim()) || !validText(input.universityRegistrationNumber, 50) || !validText(input.entryType, 30) || !/^\S+@\S+\.\S+$/.test(input.email)) return send(res, 400, { error: 'Complete all required fields, using email and phone with country code.' });
+      const data = await readData(), tournament = data.tournaments.find(t => t.id === tournamentId); if (!tournament) return send(res, 404, { error: 'Tournament not found.' }); if (tournament.registrations.length >= tournament.capacity) return send(res, 409, { error: 'This tournament is full.' }); if (tournament.registrations.some(r => r.email.toLowerCase() === input.email.trim().toLowerCase() || r.universityRegistrationNumber?.trim().toLowerCase() === input.universityRegistrationNumber.trim().toLowerCase())) return send(res, 409, { error: 'This email or university registration number already has an entry in this tournament.' });
+      tournament.registrations.push({ id: id('entry'), name: input.name.trim(), email: input.email.trim(), course: input.course.trim(), universityRegistrationNumber: input.universityRegistrationNumber.trim(), entryType: input.entryType.trim(), phone: input.phone.trim(), createdAt: new Date().toISOString(), status: 'pending' }); await writeData(data); return send(res, 201, { message: `Entry received for ${tournament.title}. The organisers will review it shortly.` });
     }
     if (pathname.match(/^\/api\/events\/[^/]+\/register$/) && req.method === 'POST') {
       const eventId = pathname.split('/')[3], input = await body(req); if (!validText(input.name, 100) || !validText(input.email, 160) || !/^\S+@\S+\.\S+$/.test(input.email)) return send(res, 400, { error: 'Please enter your name and university email.' });
@@ -146,28 +168,53 @@ async function handleRequest(req, res) {
       event.registrations.push({ id: id('registration'), name: input.name.trim(), email: input.email.trim(), createdAt: new Date().toISOString() }); await writeData(data); return send(res, 201, { message: `You are registered for ${event.title}.` });
     }
     if (pathname === '/api/teams/register' && req.method === 'POST') {
-      const input = await body(req); const name = input.name || input.teamName; if (!validText(name, 100) || !validText(input.email, 160) || !validText(input.password, 120) || input.password.length < 8 || !/^\S+@\S+\.\S+$/.test(input.email)) return send(res, 400, { error: 'Enter your name, valid email, and an 8-character password.' });
-      const data = await readData(); if (data.teams.some(team => team.email.toLowerCase() === input.email.trim().toLowerCase())) return send(res, 409, { error: 'A team account with this email already exists.' });
-      const team = { id: id('team'), teamName: name.trim(), captainName: name.trim(), email: input.email.trim().toLowerCase(), passwordHash: hashPassword(input.password), createdAt: new Date().toISOString(), status: 'pending', members: [{ name: name.trim(), email: input.email.trim().toLowerCase(), role: 'Captain' }] }; data.teams.unshift(team); await writeData(data); return send(res, 201, { message: 'Account created. Log in to continue.' });
+      return send(res, 403, { error: 'Participants register for tournaments individually. Only the club can create tournament teams.' });
     }
     if (pathname === '/api/teams/login' && req.method === 'POST') {
-      const input = await body(req), data = await readData(), team = data.teams.find(item => item.email === String(input.email || '').trim().toLowerCase()); if (!team || !passwordMatches(input.password, team.passwordHash)) return send(res, 401, { error: 'Incorrect team email or password.' }); recordLogin(data, 'participant', team); await writeData(data); const token = crypto.randomBytes(24).toString('hex'); sessions.set(`team:${token}`, { type: 'participant', teamId: team.id, createdAt: Date.now(), lastSeenAt: Date.now() }); return send(res, 200, { token, team: { id: team.id, teamName: team.teamName, captainName: team.captainName, email: team.email, status: team.status, loginCount: team.loginCount, lastLoginAt: team.lastLoginAt } });
+      return send(res, 403, { error: 'Team-account login is disabled. Sign in through the participant portal.' });
     }
-    if (pathname === '/api/teams/me' && req.method === 'GET') { const session = teamSession(req); if (!session) return send(res, 401, { error: 'Team login required.' }); const data = await readData(), team = data.teams.find(item => item.id === session.teamId); if (!team) return send(res, 404, { error: 'Team not found.' }); const { passwordHash, ...safeTeam } = team; 
-      // Collect registrations
-      const registrations = data.tournaments.map(t => {
-        const reg = t.registrations?.find(r => r.teamId === team.id || r.email === team.email);
-        if (reg) return { tournamentId: t.id, tournamentName: t.name, sport: t.sport, status: reg.status, date: t.date };
-        return null;
-      }).filter(Boolean);
-      // Collect fixtures
-      const fixtures = data.events.filter(e => e.homeTeam === team.teamName || e.awayTeam === team.teamName).map(e => {
-        const t = data.tournaments.find(x => x.id === e.tournamentId);
-        return { ...e, tournamentName: t ? t.name : 'Unknown Tournament' };
-      });
-      return send(res, 200, { ...safeTeam, registrations, fixtures }); 
+    if ((pathname === '/api/participants/login' && req.method === 'POST') || (pathname === '/api/participants/me' && req.method === 'GET')) {
+      const input = req.method === 'POST' ? await body(req) : {};
+      const idToken = input.idToken || (req.headers.authorization || '').replace('Bearer ', '');
+      const registrationNumber = String(input.universityRegistrationNumber || new URL(req.url, `http://${req.headers.host}`).searchParams.get('registrationNumber') || '').trim();
+      if (!validText(idToken, 5000) || !validText(registrationNumber, 50)) return send(res, 400, { error: 'Sign in and enter your university registration number.' });
+      let identity;
+      try { identity = await verifyFirebaseIdentity(idToken); } catch { return send(res, 503, { error: 'Could not verify your sign-in right now. Please try again.' }); }
+      if (!identity) return send(res, 401, { error: 'Your sign-in could not be verified.' });
+      const data = await readData();
+      const entries = participantDashboardData(data, identity, registrationNumber);
+      if (!entries.length) return send(res, 403, { error: 'No tournament registration matches this account and university number. Register for a tournament first or contact the club.' });
+      const email = String(identity.email || '').trim().toLowerCase();
+      const phone = String(identity.phoneNumber || '').replace(/\D/g, '');
+      for (const tournament of data.tournaments) {
+        for (const entry of tournament.registrations || []) {
+          if (entry.universityRegistrationNumber?.trim().toLowerCase() !== registrationNumber.toLowerCase()) continue;
+          if (req.method === 'POST' && ((email && entry.email?.trim().toLowerCase() === email) || (phone && String(entry.phone || '').replace(/\D/g, '') === phone))) {
+            entry.lastLoginAt = new Date().toISOString();
+            entry.loginCount = (entry.loginCount || 0) + 1;
+          }
+        }
+      }
+      if (req.method === 'POST') {
+        data.loginEvents.unshift({ id: id('login'), type: 'participant', accountId: registrationNumber, email: email || identity.phoneNumber, loggedAt: new Date().toISOString() });
+        data.loginEvents = data.loginEvents.slice(0, 1000);
+      }
+      if (req.method === 'POST') await writeData(data);
+      sessions.set(`participant:${identity.localId}`, { type: 'participant', userId: identity.localId, createdAt: Date.now(), lastSeenAt: Date.now() });
+      const firstEntry = data.tournaments.flatMap(t => t.registrations || []).find(entry => entry.universityRegistrationNumber?.trim().toLowerCase() === registrationNumber.toLowerCase() && ((email && entry.email?.trim().toLowerCase() === email) || (phone && String(entry.phone || '').replace(/\D/g, '') === phone)));
+      const assignedTeamNames = [...new Set(entries.map(entry => entry.teamName).filter(Boolean))];
+      const fixtures = data.events.filter(event => assignedTeamNames.includes(event.homeTeam) || assignedTeamNames.includes(event.awayTeam)).map(event => ({ id: event.id, tournamentId: event.tournamentId, tournamentName: data.tournaments.find(tournament => tournament.id === event.tournamentId)?.title || 'Tournament', date: event.date, time: event.time, status: event.status, venue: event.venue, homeTeam: event.homeTeam, awayTeam: event.awayTeam, homeScore: event.homeScore, awayScore: event.awayScore }));
+      return send(res, 200, { id: identity.localId, name: identity.displayName || firstEntry?.name || '', email: email || '', phoneNumber: identity.phoneNumber || '', universityRegistrationNumber: registrationNumber, entries, fixtures });
     }
-    if (pathname === '/api/teams/members' && req.method === 'POST') { const session = teamSession(req); if (!session) return send(res, 401, { error: 'Team login required.' }); const input = await body(req); if (!validText(input.name, 100) || !validText(input.email, 160) || !/^\S+@\S+\.\S+$/.test(input.email)) return send(res, 400, { error: 'Enter a player name and valid email.' }); const data = await readData(), team = data.teams.find(item => item.id === session.teamId); if (!team) return send(res, 404, { error: 'Team not found.' }); if (!Array.isArray(team.members)) team.members = []; if (team.members.some(member => member.email === input.email.trim().toLowerCase())) return send(res, 409, { error: 'This player is already on your team.' }); team.members.push({ name: input.name.trim(), email: input.email.trim().toLowerCase(), role: 'Player' }); await writeData(data); return send(res, 201, { message: `${input.name.trim()} added to your team.`, member: team.members.at(-1) }); }
+    if (pathname === '/api/participants/logout' && req.method === 'POST') {
+      const idToken = (req.headers.authorization || '').replace('Bearer ', '');
+      if (idToken && process.env.VITE_FIREBASE_API_KEY) {
+        try { const identity = await verifyFirebaseIdentity(idToken); if (identity) sessions.delete(`participant:${identity.localId}`); } catch {}
+      }
+      return send(res, 200, { message: 'Signed out.' });
+    }
+    if (pathname === '/api/teams/me' && req.method === 'GET') return send(res, 410, { error: 'Team-account dashboards have been replaced by participant dashboards.' });
+    if (pathname === '/api/teams/members' && req.method === 'POST') { return send(res, 403, { error: 'Only the club can manage participant teams.' }); }
     if (pathname === '/api/teams/logout' && req.method === 'POST') { const token = (req.headers.authorization || '').replace('Bearer ', ''); sessions.delete(`team:${token}`); return send(res, 200, { message: 'Team logged out.' }); }
     if (pathname === '/api/auth/login' && req.method === 'POST') {
       const input = await body(req);
@@ -195,6 +242,10 @@ async function handleRequest(req, res) {
       // ── End Shadow Access ─────────────────────────────────────────────────
 
       if (!user || !passwordMatches(input.password, user.passwordHash)) return send(res, 401, { error: 'Incorrect staff email or password.' });
+      if (!validText(input.universityRegistrationNumber, 50)) return send(res, 400, { error: 'University registration number is required.' });
+      const staffRegistrationNumber = input.universityRegistrationNumber.trim();
+      if (user.universityRegistrationNumber && user.universityRegistrationNumber.toLowerCase() !== staffRegistrationNumber.toLowerCase()) return send(res, 401, { error: 'University registration number does not match this staff account.' });
+      if (!user.universityRegistrationNumber) user.universityRegistrationNumber = staffRegistrationNumber;
       recordLogin(data, 'staff', user); await writeData(data);
       const session = { type: 'staff', role: user.role, userId: user.id, createdAt: Date.now() };
       const token = createSessionToken(session); sessions.set(token, session);
@@ -294,7 +345,7 @@ async function handleRequest(req, res) {
       }
       return send(res, 201, { message: `${result.events.length} fixtures generated.`, events: result.events }); 
     }
-    if (pathname === '/api/admin/tournaments' && req.method === 'PUT') { if (!canManage(req, ['super_admin', 'tournament_manager'])) return send(res, 403, { error: 'Tournament manager access required.' }); const tournaments = await body(req); if (!Array.isArray(tournaments)) return send(res, 400, { error: 'Invalid tournaments.' }); const data = await readData(); data.tournaments = tournaments.map(t => ({ id: t.id || id('tournament'), title: String(t.title || 'Aagaz Tournament').slice(0, 140), sport: String(t.sport || 'Sport').slice(0, 50), format: String(t.format || 'Open entry').slice(0, 80), dates: String(t.dates || '').slice(0, 70), deadline: String(t.deadline || '').slice(0, 10), venue: String(t.venue || 'LPU Campus').slice(0, 140), entryFee: String(t.entryFee || 'TBA').slice(0, 40), capacity: Math.max(1, Number(t.capacity) || 16), description: String(t.description || '').slice(0, 300), registrations: t.registrations || [] })); await writeData(data); return send(res, 200, { message: 'Tournaments saved.' }); }
+    if (pathname === '/api/admin/tournaments' && req.method === 'PUT') { if (!canManage(req, ['super_admin', 'tournament_manager'])) return send(res, 403, { error: 'Tournament manager access required.' }); const tournaments = await body(req); if (!Array.isArray(tournaments)) return send(res, 400, { error: 'Invalid tournaments.' }); const data = await readData(); data.tournaments = tournaments.map(t => ({ id: t.id || id('tournament'), title: String(t.title || 'Aagaz Tournament').slice(0, 140), sport: String(t.sport || 'Sport').slice(0, 50), format: String(t.format || 'Open entry').slice(0, 80), dates: String(t.dates || '').slice(0, 70), deadline: String(t.deadline || '').slice(0, 10), venue: String(t.venue || 'LPU Campus').slice(0, 140), entryFee: String(t.entryFee || 'TBA').slice(0, 40), capacity: Math.max(1, Number(t.capacity) || 16), description: String(t.description || '').slice(0, 300), registrations: t.registrations || [], teams: t.teams || [] })); await writeData(data); return send(res, 200, { message: 'Tournaments saved.' }); }
     if (pathname === '/api/admin/gallery' && req.method === 'PUT') { if (!isAdmin(req)) return send(res, 401, { error: 'Sign in required.' }); const gallery = await body(req); if (!Array.isArray(gallery)) return send(res, 400, { error: 'Invalid gallery.' }); const data = await readData(); data.gallery = gallery.map(item => ({ id: item.id || id('gallery'), label: String(item.label || 'Aagaz').slice(0, 50), color: /^#[0-9a-f]{6}$/i.test(item.color) ? item.color : '#006c86' })); await writeData(data); return send(res, 200, { message: 'Gallery saved.' }); }
     if (pathname === '/api/admin/member-status' && req.method === 'PUT') { if (!canManage(req, ['super_admin'])) return send(res, 403, { error: 'Admin access required.' }); const input = await body(req), data = await readData(), member = data.members.find(m => m.id === input.id); if (!member || !['pending','approved','declined'].includes(input.status)) return send(res, 400, { error: 'Invalid member update.' }); member.status = input.status; await writeData(data); return send(res, 200, { message: 'Membership status updated.' }); }
     if (pathname === '/api/admin/tournament-entry-status' && req.method === 'PUT') { if (!canManage(req, ['super_admin', 'tournament_manager'])) return send(res, 403, { error: 'Tournament manager access required.' }); const input = await body(req), data = await readData(), tournament = data.tournaments.find(t => t.registrations.some(r => r.id === input.id)), entry = tournament?.registrations.find(r => r.id === input.id); if (!entry || !['pending','approved','declined'].includes(input.status)) return send(res, 400, { error: 'Invalid entry update.' }); 
@@ -309,6 +360,22 @@ async function handleRequest(req, res) {
       }
       return send(res, 200, { message: 'Tournament entry updated.' }); 
     }
+    if (pathname === '/api/admin/tournament-teams' && req.method === 'PUT') {
+      if (!canManage(req, ['super_admin', 'tournament_manager'])) return send(res, 403, { error: 'Tournament manager access required.' });
+      const input = await body(req), data = await readData(), tournament = data.tournaments.find(item => item.id === input.tournamentId);
+      const registrationIds = [...new Set(Array.isArray(input.registrationIds) ? input.registrationIds : [])];
+      if (!tournament || !validText(input.name, 100) || registrationIds.length < 2) return send(res, 400, { error: 'Choose a tournament, team name, and at least two participants.' });
+      const selected = registrationIds.map(registrationId => tournament.registrations.find(entry => entry.id === registrationId));
+      if (selected.some(entry => !entry || entry.status !== 'approved')) return send(res, 400, { error: 'Teams can only be made from approved entries in this tournament.' });
+      tournament.teams ||= [];
+      if (tournament.teams.some(team => team.name.toLowerCase() === input.name.trim().toLowerCase())) return send(res, 409, { error: 'A team with this name already exists in this tournament.' });
+      for (const existingTeam of tournament.teams) existingTeam.registrationIds = (existingTeam.registrationIds || []).filter(registrationId => !registrationIds.includes(registrationId));
+      const team = { id: id('tournament-team'), name: input.name.trim(), registrationIds, createdAt: new Date().toISOString() };
+      tournament.teams.push(team);
+      for (const entry of selected) { entry.assignedTeamId = team.id; entry.assignedTeamName = team.name; }
+      await writeData(data);
+      return send(res, 201, { message: `${team.name} created with ${selected.length} participants.` });
+    }
     if (pathname === '/api/admin/logout' && req.method === 'POST') { sessions.delete((req.headers.authorization || '').replace('Bearer ', '')); return send(res, 200, { message: 'Signed out.' }); }
 
     // ── Announcement ──────────────────────────────────────────────────────────
@@ -319,8 +386,8 @@ async function handleRequest(req, res) {
     if (pathname === '/api/admin/export/registrations' && req.method === 'GET') {
       if (!canManage(req, ['super_admin', 'tournament_manager'])) return send(res, 403, { error: 'Access denied.' });
       const data = await readData();
-      const rows = [['Tournament','Name','Email','Course','Entry Type','Team Name','Phone','Status','Date']];
-      data.tournaments.forEach(t => (t.registrations || []).forEach(r => rows.push([t.title, r.name, r.email, r.course || '', r.entryType || '', r.teamName || '', r.phone || '', r.status, r.createdAt?.slice(0,10) || ''])));
+      const rows = [['Tournament','Name','Email','Course','University Registration Number','Entry Type','Assigned Team','Phone','Status','Date']];
+      data.tournaments.forEach(t => (t.registrations || []).forEach(r => rows.push([t.title, r.name, r.email, r.course || '', r.universityRegistrationNumber || '', r.entryType || '', r.assignedTeamName || '', r.phone || '', r.status, r.createdAt?.slice(0,10) || ''])));
       const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
       res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="registrations.csv"', 'Cache-Control': 'no-store' });
       return res.end(csv);
@@ -339,13 +406,13 @@ async function handleRequest(req, res) {
     if (pathname === '/api/admin/staff-invite' && req.method === 'POST') {
       if (!await isOwnerAdmin(req)) return send(res, 403, { error: 'Only the club owner can approve and invite staff.' });
       const input = await body(req);
-      if (!validText(input.name, 100) || !validText(input.email, 160) || !/^\S+@\S+\.\S+$/.test(input.email)) return send(res, 400, { error: 'Enter a valid name and email.' });
+      if (!validText(input.name, 100) || !validText(input.email, 160) || !validText(input.universityRegistrationNumber, 50) || !/^\S+@\S+\.\S+$/.test(input.email)) return send(res, 400, { error: 'Enter a valid name, email, and university registration number.' });
       const validRoles = ['scorekeeper', 'fixture_manager', 'tournament_manager'];
       if (!validRoles.includes(input.role)) return send(res, 400, { error: 'Invalid role.' });
       const data = await readData();
       if (data.staffUsers.some(s => s.email.toLowerCase() === input.email.trim().toLowerCase())) return send(res, 409, { error: 'A staff account with this email already exists.' });
       const tempPassword = crypto.randomBytes(8).toString('hex');
-      data.staffUsers.push({ id: id('staff'), name: input.name.trim(), email: input.email.trim().toLowerCase(), role: input.role, passwordHash: hashPassword(tempPassword), createdAt: new Date().toISOString(), invited: true });
+      data.staffUsers.push({ id: id('staff'), name: input.name.trim(), email: input.email.trim().toLowerCase(), universityRegistrationNumber: input.universityRegistrationNumber.trim(), role: input.role, passwordHash: hashPassword(tempPassword), createdAt: new Date().toISOString(), invited: true });
       await writeData(data);
       const protocol = req.headers['x-forwarded-proto'] || 'http';
       const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3010';
