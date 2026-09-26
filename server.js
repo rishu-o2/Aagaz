@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 require('dotenv').config({ path: path.join(__dirname, '.env.local') });
 require('dotenv').config({ path: path.join(__dirname, '.env.owner.local'), override: false });
+require('dotenv').config({ path: path.join(__dirname, '.env.maker.local'), override: false });
 const nodemailer = require('nodemailer');
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -39,6 +40,9 @@ const ACTIVE_SESSION_WINDOW = 30 * 60 * 1000;
 const BOOTSTRAP_OWNER_EMAIL = String(process.env.BOOTSTRAP_OWNER_EMAIL || '').trim().toLowerCase();
 const BOOTSTRAP_OWNER_PASSWORD = process.env.BOOTSTRAP_OWNER_PASSWORD || '';
 const BOOTSTRAP_OWNER_NAME = String(process.env.BOOTSTRAP_OWNER_NAME || 'Aagaz Owner').trim();
+const PLATFORM_MAKER_EMAIL = String(process.env.PLATFORM_MAKER_EMAIL || '').trim().toLowerCase();
+const PLATFORM_MAKER_PASSWORD = process.env.PLATFORM_MAKER_PASSWORD || '';
+const PLATFORM_MAKER_NAME = String(process.env.PLATFORM_MAKER_NAME || 'Platform Maker').trim();
 
 const initialData = {
   tournaments: [],
@@ -90,6 +94,17 @@ async function readData() {
       changed = true;
     }
   }
+  if (PLATFORM_MAKER_EMAIL && PLATFORM_MAKER_PASSWORD) {
+    const maker = data.staffUsers.find((user) => user.email?.toLowerCase() === PLATFORM_MAKER_EMAIL);
+    if (!maker) {
+      data.staffUsers.push({ id: id('staff'), name: PLATFORM_MAKER_NAME, email: PLATFORM_MAKER_EMAIL, role: 'super_admin', isPlatformMaker: true, passwordHash: hashPassword(PLATFORM_MAKER_PASSWORD), createdAt: new Date().toISOString(), invited: false });
+      changed = true;
+    } else if (maker.role !== 'super_admin' || !maker.isPlatformMaker) {
+      maker.role = 'super_admin';
+      maker.isPlatformMaker = true;
+      changed = true;
+    }
+  }
   if (changed) await writeData(data);
   return data;
 }
@@ -109,6 +124,7 @@ function createSessionToken(session) { const payload = Buffer.from(JSON.stringif
 function readSessionToken(token) { try { const [payload, signature] = token.split('.'); const expected = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url'); if (!payload || !signature || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null; return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')); } catch { return null; } }
 function staffSession(req) { const token = (req.headers.authorization || '').replace('Bearer ', ''); const session = sessions.get(token) || readSessionToken(token); if (!session || session.type !== 'staff') return null; session.lastSeenAt = Date.now(); return session; }
 function canManage(req, roles) { const session = staffSession(req); return Boolean(session && roles.includes(session.role)); }
+async function isOwnerAdmin(req) { const session = staffSession(req); if (!session) return false; const data = await readData(); return Boolean(data.staffUsers.find((user) => user.id === session.userId)?.isOwner); }
 function teamSession(req) { const token = (req.headers.authorization || '').replace('Bearer ', ''); const session = sessions.get(`team:${token}`); if (!session || session.type !== 'participant') return null; session.lastSeenAt = Date.now(); return session; }
 function recordLogin(data, type, account) { const loggedAt = new Date().toISOString(); account.loginCount = (account.loginCount || 0) + 1; account.lastLoginAt = loggedAt; data.loginEvents.unshift({ id: id('login'), type, accountId: account.id, email: account.email, loggedAt }); data.loginEvents = data.loginEvents.slice(0, 1000); }
 function safeAdminData(data, user) { const now = Date.now(); const active = [...sessions.values()].filter((session) => now - (session.lastSeenAt || session.createdAt) < ACTIVE_SESSION_WINDOW); return { ...data, teams: data.teams.map(({ passwordHash, ...team }) => team), staffUsers: data.staffUsers.map(({ passwordHash, ...staff }) => staff), loginEvents: data.loginEvents, analytics: { totalParticipantAccounts: data.teams.length, totalStaffAccounts: data.staffUsers.length, totalLogins: data.loginEvents.length, participantLogins: data.loginEvents.filter((event) => event.type === 'participant').length, staffLogins: data.loginEvents.filter((event) => event.type === 'staff').length, activeParticipants: active.filter((session) => session.type === 'participant').length, activeStaff: active.filter((session) => session.type === 'staff').length, lastLoginAt: data.loginEvents[0]?.loggedAt || null }, user }; }
@@ -279,7 +295,7 @@ async function handleRequest(req, res) {
 
     // ── Staff Invite & Remove ─────────────────────────────────────────────────
     if (pathname === '/api/admin/staff-invite' && req.method === 'POST') {
-      if (!canManage(req, ['super_admin'])) return send(res, 403, { error: 'Admin access required.' });
+      if (!await isOwnerAdmin(req)) return send(res, 403, { error: 'Only the club owner can approve and invite staff.' });
       const input = await body(req);
       if (!validText(input.name, 100) || !validText(input.email, 160) || !/^\S+@\S+\.\S+$/.test(input.email)) return send(res, 400, { error: 'Enter a valid name and email.' });
       const validRoles = ['scorekeeper', 'fixture_manager', 'tournament_manager'];
@@ -315,7 +331,7 @@ async function handleRequest(req, res) {
       return send(res, 201, { message: `Staff account created for ${input.name.trim()}. An invite email has been sent.`, inviteLink, tempPassword });
     }
     if (pathname.match(/^\/api\/admin\/staff\/[^/]+$/) && req.method === 'DELETE') {
-      if (!canManage(req, ['super_admin'])) return send(res, 403, { error: 'Admin access required.' });
+      if (!await isOwnerAdmin(req)) return send(res, 403, { error: 'Only the club owner can remove staff.' });
       const staffId = pathname.split('/')[4];
       const data = await readData();
       const idx = data.staffUsers.findIndex(s => s.id === staffId && s.role !== 'super_admin');

@@ -4,4 +4,5 @@ dist/
 .env.*
 !.env.example
 .env.owner.local
+.env.maker.local
 .vercel
