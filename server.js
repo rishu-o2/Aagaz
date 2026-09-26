@@ -166,7 +166,20 @@ async function handleRequest(req, res) {
     if (pathname === '/api/teams/login' && req.method === 'POST') {
       const input = await body(req), data = await readData(), team = data.teams.find(item => item.email === String(input.email || '').trim().toLowerCase()); if (!team || !passwordMatches(input.password, team.passwordHash)) return send(res, 401, { error: 'Incorrect team email or password.' }); recordLogin(data, 'participant', team); await writeData(data); const token = crypto.randomBytes(24).toString('hex'); sessions.set(`team:${token}`, { type: 'participant', teamId: team.id, createdAt: Date.now(), lastSeenAt: Date.now() }); return send(res, 200, { token, team: { id: team.id, teamName: team.teamName, captainName: team.captainName, email: team.email, status: team.status, loginCount: team.loginCount, lastLoginAt: team.lastLoginAt } });
     }
-    if (pathname === '/api/teams/me' && req.method === 'GET') { const session = teamSession(req); if (!session) return send(res, 401, { error: 'Team login required.' }); const data = await readData(), team = data.teams.find(item => item.id === session.teamId); if (!team) return send(res, 404, { error: 'Team not found.' }); const { passwordHash, ...safeTeam } = team; return send(res, 200, safeTeam); }
+    if (pathname === '/api/teams/me' && req.method === 'GET') { const session = teamSession(req); if (!session) return send(res, 401, { error: 'Team login required.' }); const data = await readData(), team = data.teams.find(item => item.id === session.teamId); if (!team) return send(res, 404, { error: 'Team not found.' }); const { passwordHash, ...safeTeam } = team; 
+      // Collect registrations
+      const registrations = data.tournaments.map(t => {
+        const reg = t.registrations?.find(r => r.teamId === team.id || r.email === team.email);
+        if (reg) return { tournamentId: t.id, tournamentName: t.name, sport: t.sport, status: reg.status, date: t.date };
+        return null;
+      }).filter(Boolean);
+      // Collect fixtures
+      const fixtures = data.events.filter(e => e.homeTeam === team.teamName || e.awayTeam === team.teamName).map(e => {
+        const t = data.tournaments.find(x => x.id === e.tournamentId);
+        return { ...e, tournamentName: t ? t.name : 'Unknown Tournament' };
+      });
+      return send(res, 200, { ...safeTeam, registrations, fixtures }); 
+    }
     if (pathname === '/api/teams/members' && req.method === 'POST') { const session = teamSession(req); if (!session) return send(res, 401, { error: 'Team login required.' }); const input = await body(req); if (!validText(input.name, 100) || !validText(input.email, 160) || !/^\S+@\S+\.\S+$/.test(input.email)) return send(res, 400, { error: 'Enter a player name and valid email.' }); const data = await readData(), team = data.teams.find(item => item.id === session.teamId); if (!team) return send(res, 404, { error: 'Team not found.' }); if (!Array.isArray(team.members)) team.members = []; if (team.members.some(member => member.email === input.email.trim().toLowerCase())) return send(res, 409, { error: 'This player is already on your team.' }); team.members.push({ name: input.name.trim(), email: input.email.trim().toLowerCase(), role: 'Player' }); await writeData(data); return send(res, 201, { message: `${input.name.trim()} added to your team.`, member: team.members.at(-1) }); }
     if (pathname === '/api/teams/logout' && req.method === 'POST') { const token = (req.headers.authorization || '').replace('Bearer ', ''); sessions.delete(`team:${token}`); return send(res, 200, { message: 'Team logged out.' }); }
     if (pathname === '/api/auth/login' && req.method === 'POST') {
