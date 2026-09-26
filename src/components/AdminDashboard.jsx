@@ -5,11 +5,11 @@ import AnalyticsCharts from "./AnalyticsCharts";
 import AnnouncementManager from "./AnnouncementManager";
 import ImageGalleryManager from "./ImageGalleryManager";
 import StaffInviteSystem from "./StaffInviteSystem";
+import DashboardShell from "./DashboardShell";
 
 export default function AdminDashboard({ token, onToken, onClose, onMessage, onAuthenticated, onLogout }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [universityRegistrationNumber, setUniversityRegistrationNumber] = useState("");
   const [adminData, setAdminData] = useState(null);
   const [events, setEvents] = useState([]);
   const [liveMatches, setLiveMatches] = useState([]);
@@ -40,7 +40,7 @@ export default function AdminDashboard({ token, onToken, onClose, onMessage, onA
   async function login(event) {
     event.preventDefault(); setBusy(true);
     try {
-      const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, universityRegistrationNumber }) });
+      const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
       const result = await response.json(); if (!response.ok) throw new Error(result.error);
       localStorage.setItem("aagaz-admin-token", result.token); onToken(result.token); onAuthenticated?.();
     } catch (error) { onMessage(error.message); } finally { setBusy(false); }
@@ -77,7 +77,7 @@ export default function AdminDashboard({ token, onToken, onClose, onMessage, onA
     w.document.close(); w.print();
   }
 
-  if (!token || !adminData) return <AdminLogin email={email} setEmail={setEmail} password={password} setPassword={setPassword} universityRegistrationNumber={universityRegistrationNumber} setUniversityRegistrationNumber={setUniversityRegistrationNumber} busy={busy} onSubmit={login} onClose={onClose} />;
+  if (!token || !adminData) return <AdminLogin email={email} setEmail={setEmail} password={password} setPassword={setPassword} busy={busy} onSubmit={login} onClose={onClose} />;
 
   const pendingEntries = tournaments.flatMap(t => (t.registrations || []).filter(r => r.status === "pending")).length;
   const pendingMembers = members.filter(m => m.status === "pending").length;
@@ -101,9 +101,23 @@ export default function AdminDashboard({ token, onToken, onClose, onMessage, onA
   ];
 
   return (
-    <div className="fixed inset-0 z-40 overflow-y-auto bg-ink/95 backdrop-blur-sm">
-      <div className="mx-auto max-w-7xl px-4 pb-16 sm:px-8">
-        <div className="sticky top-0 z-10 bg-ink/95 backdrop-blur-md border-b border-white/10 py-4">
+    <DashboardShell
+      roleLabel={user?.role?.replaceAll("_", " ") || "Staff"}
+      name={user?.name || "Staff Dashboard"}
+      email={user?.email}
+      badge={totalAlerts > 0 && <div className="flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/20 px-3 py-1"><span className="text-xs font-black text-red-400">{totalAlerts} pending</span></div>}
+      actions={<>
+        {user?.role === "super_admin" && <><button onClick={() => downloadCSV("/api/admin/export/registrations", "registrations.csv")} className="hidden rounded-md border border-white/15 px-3 py-2 text-xs font-black uppercase tracking-widest text-slate-400 hover:border-lime hover:text-lime sm:block">Entries</button><button onClick={() => downloadCSV("/api/admin/export/members", "members.csv")} className="hidden rounded-md border border-white/15 px-3 py-2 text-xs font-black uppercase tracking-widest text-slate-400 hover:border-lime hover:text-lime sm:block">Members</button></>}
+        <button onClick={printFixtures} className="hidden rounded-md border border-white/15 px-3 py-2 text-xs font-black uppercase tracking-widest text-slate-400 hover:border-white hover:text-white sm:block">Print</button>
+        <button onClick={logout} className="rounded-md border border-white/15 px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-400 hover:border-cyan hover:text-cyan">Sign out</button>
+        <button onClick={onClose} className="flex h-8 w-8 items-center justify-center text-2xl text-slate-500 hover:text-white">×</button>
+      </>}
+      tabs={TABS}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+    >
+      <div className="contents"><div className="contents">
+        <div className="hidden">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div>
@@ -143,7 +157,7 @@ export default function AdminDashboard({ token, onToken, onClose, onMessage, onA
           </div>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-0">
           {activeTab === "overview" && <OverviewStats analytics={adminData.analytics} tournaments={tournaments} members={members} events={events} liveMatches={liveMatches} onTabSwitch={setActiveTab} />}
           {activeTab === "scores" && (user?.role === "super_admin" || user?.role === "scorekeeper") && <Scoreboard liveMatches={liveMatches} setLiveMatches={setLiveMatches} updateMatch={updateMatch} save={save} busy={busy} />}
           {activeTab === "fixtures" && (user?.role === "super_admin" || user?.role === "fixture_manager") && <FixtureManager events={events} setEvents={setEvents} tournaments={tournaments} onSave={save} busy={busy} />}
@@ -157,8 +171,8 @@ export default function AdminDashboard({ token, onToken, onClose, onMessage, onA
           {activeTab === "analytics" && user?.role === "super_admin" && <AnalyticsCharts tournaments={tournaments} members={members} analytics={adminData.analytics} />}
           {activeTab === "settings" && user?.role === "super_admin" && <SettingsPanel token={token} onMessage={onMessage} onLogout={logout} />}
         </div>
-      </div>
-    </div>
+      </div></div>
+    </DashboardShell>
   );
 }
 

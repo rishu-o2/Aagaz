@@ -49,6 +49,7 @@ const initialData = {
   enquiries: [],
   gallery: [],
   teams: [],
+  participantAccounts: [],
   staffUsers: [],
   loginEvents: []
 };
@@ -71,6 +72,7 @@ async function readData() {
   if (!Array.isArray(data.enquiries))   { data.enquiries = []; changed = true; }
   if (!Array.isArray(data.gallery))     { data.gallery = []; changed = true; }
   if (!Array.isArray(data.teams))       { data.teams = []; changed = true; }
+  if (!Array.isArray(data.participantAccounts)) { data.participantAccounts = []; changed = true; }
   if (!Array.isArray(data.staffUsers))  { data.staffUsers = []; changed = true; }
   if (!Array.isArray(data.loginEvents)) { data.loginEvents = []; changed = true; }
   if (!data.staffUsers.length) {
@@ -126,15 +128,15 @@ async function verifyFirebaseIdentity(idToken) {
   const body = await response.json();
   return body.users?.[0] || null;
 }
-function participantDashboardData(data, identity, registrationNumber) {
+function participantDashboardData(data, identity, registrationNumber = '') {
   const email = String(identity.email || '').trim().toLowerCase();
   const phone = String(identity.phoneNumber || '').replace(/\D/g, '');
   const entries = [];
   for (const tournament of data.tournaments) {
     for (const entry of tournament.registrations || []) {
-      const sameId = entry.universityRegistrationNumber?.trim().toLowerCase() === registrationNumber.toLowerCase();
       const sameIdentity = (email && entry.email?.trim().toLowerCase() === email) || (phone && String(entry.phone || '').replace(/\D/g, '') === phone);
-      if (!sameId || !sameIdentity) continue;
+      const sameRegistrationNumber = registrationNumber && entry.universityRegistrationNumber?.trim().toLowerCase() === registrationNumber.trim().toLowerCase();
+      if (!sameIdentity && !sameRegistrationNumber) continue;
       const squad = (tournament.teams || []).find(team => (team.registrationIds || []).includes(entry.id));
       entries.push({ id: entry.id, tournamentId: tournament.id, tournamentName: tournament.title, sport: tournament.sport, date: tournament.dates, status: entry.status, entryType: entry.entryType, teamName: squad?.name || entry.assignedTeamName || '', teammates: squad ? (tournament.registrations || []).filter(member => squad.registrationIds.includes(member.id)).map(member => ({ name: member.name })) : [] });
     }
@@ -173,22 +175,44 @@ async function handleRequest(req, res) {
     if (pathname === '/api/teams/login' && req.method === 'POST') {
       return send(res, 403, { error: 'Team-account login is disabled. Sign in through the participant portal.' });
     }
-    if ((pathname === '/api/participants/login' && req.method === 'POST') || (pathname === '/api/participants/me' && req.method === 'GET')) {
-      const input = req.method === 'POST' ? await body(req) : {};
-      const idToken = input.idToken || (req.headers.authorization || '').replace('Bearer ', '');
-      const registrationNumber = String(input.universityRegistrationNumber || new URL(req.url, `http://${req.headers.host}`).searchParams.get('registrationNumber') || '').trim();
-      if (!validText(idToken, 5000) || !validText(registrationNumber, 50)) return send(res, 400, { error: 'Sign in and enter your university registration number.' });
+    if (pathname === '/api/participants/register' && req.method === 'POST') {
+      const input = await body(req);
+      const idToken = input.idToken;
+      const name = String(input.name || '').trim();
+      const registrationNumber = String(input.universityRegistrationNumber || '').trim();
+      if (!validText(idToken, 5000) || !validText(name, 100) || !validText(registrationNumber, 50)) return send(res, 400, { error: 'Enter your name and university registration number to create an account.' });
       let identity;
       try { identity = await verifyFirebaseIdentity(idToken); } catch { return send(res, 503, { error: 'Could not verify your sign-in right now. Please try again.' }); }
       if (!identity) return send(res, 401, { error: 'Your sign-in could not be verified.' });
       const data = await readData();
-      const entries = participantDashboardData(data, identity, registrationNumber);
-      if (!entries.length) return send(res, 403, { error: 'No tournament registration matches this account and university number. Register for a tournament first or contact the club.' });
+      const existing = data.participantAccounts.find(account => account.id === identity.localId);
+      const numberOwner = data.participantAccounts.find(account => account.universityRegistrationNumber?.trim().toLowerCase() === registrationNumber.toLowerCase() && account.id !== identity.localId);
+      if (numberOwner) return send(res, 409, { error: 'That university registration number is already linked to another participant account.' });
+      if (existing && existing.universityRegistrationNumber?.trim().toLowerCase() !== registrationNumber.toLowerCase()) return send(res, 409, { error: 'This account already has a different university registration number.' });
+      const account = existing || { id: identity.localId, createdAt: new Date().toISOString() };
+      Object.assign(account, { name, email: String(identity.email || '').trim().toLowerCase(), phoneNumber: identity.phoneNumber || '', universityRegistrationNumber: registrationNumber, updatedAt: new Date().toISOString() });
+      if (!existing) data.participantAccounts.push(account);
+      await writeData(data);
+      return send(res, 201, { message: 'Participant account created.' });
+    }
+    if ((pathname === '/api/participants/login' && req.method === 'POST') || (pathname === '/api/participants/me' && req.method === 'GET')) {
+      const input = req.method === 'POST' ? await body(req) : {};
+      const idToken = input.idToken || (req.headers.authorization || '').replace('Bearer ', '');
+      if (!validText(idToken, 5000)) return send(res, 400, { error: 'Sign in to continue.' });
+      let identity;
+      try { identity = await verifyFirebaseIdentity(idToken); } catch { return send(res, 503, { error: 'Could not verify your sign-in right now. Please try again.' }); }
+      if (!identity) return send(res, 401, { error: 'Your sign-in could not be verified.' });
+      const data = await readData();
       const email = String(identity.email || '').trim().toLowerCase();
       const phone = String(identity.phoneNumber || '').replace(/\D/g, '');
+      const account = data.participantAccounts.find(item => item.id === identity.localId);
+      const entries = participantDashboardData(data, identity, account?.universityRegistrationNumber);
+      const firstEntry = data.tournaments.flatMap(t => t.registrations || []).find(entry => (email && entry.email?.trim().toLowerCase() === email) || (phone && String(entry.phone || '').replace(/\D/g, '') === phone));
+      if (!entries.length && !account && !firstEntry) return send(res, 403, { error: 'No participant account or tournament registration matches this sign-in. Create an account or register for a tournament first.' });
+      const registrationNumber = account?.universityRegistrationNumber || firstEntry?.universityRegistrationNumber || '';
+      const participantName = account?.name || firstEntry?.name || identity.displayName || '';
       for (const tournament of data.tournaments) {
         for (const entry of tournament.registrations || []) {
-          if (entry.universityRegistrationNumber?.trim().toLowerCase() !== registrationNumber.toLowerCase()) continue;
           if (req.method === 'POST' && ((email && entry.email?.trim().toLowerCase() === email) || (phone && String(entry.phone || '').replace(/\D/g, '') === phone))) {
             entry.lastLoginAt = new Date().toISOString();
             entry.loginCount = (entry.loginCount || 0) + 1;
@@ -201,10 +225,9 @@ async function handleRequest(req, res) {
       }
       if (req.method === 'POST') await writeData(data);
       sessions.set(`participant:${identity.localId}`, { type: 'participant', userId: identity.localId, createdAt: Date.now(), lastSeenAt: Date.now() });
-      const firstEntry = data.tournaments.flatMap(t => t.registrations || []).find(entry => entry.universityRegistrationNumber?.trim().toLowerCase() === registrationNumber.toLowerCase() && ((email && entry.email?.trim().toLowerCase() === email) || (phone && String(entry.phone || '').replace(/\D/g, '') === phone)));
       const assignedTeamNames = [...new Set(entries.map(entry => entry.teamName).filter(Boolean))];
       const fixtures = data.events.filter(event => assignedTeamNames.includes(event.homeTeam) || assignedTeamNames.includes(event.awayTeam)).map(event => ({ id: event.id, tournamentId: event.tournamentId, tournamentName: data.tournaments.find(tournament => tournament.id === event.tournamentId)?.title || 'Tournament', date: event.date, time: event.time, status: event.status, venue: event.venue, homeTeam: event.homeTeam, awayTeam: event.awayTeam, homeScore: event.homeScore, awayScore: event.awayScore }));
-      return send(res, 200, { id: identity.localId, name: identity.displayName || firstEntry?.name || '', email: email || '', phoneNumber: identity.phoneNumber || '', universityRegistrationNumber: registrationNumber, entries, fixtures });
+      return send(res, 200, { id: identity.localId, name: participantName, email: email || '', phoneNumber: identity.phoneNumber || '', universityRegistrationNumber: registrationNumber, entries, fixtures });
     }
     if (pathname === '/api/participants/logout' && req.method === 'POST') {
       const idToken = (req.headers.authorization || '').replace('Bearer ', '');
@@ -242,10 +265,6 @@ async function handleRequest(req, res) {
       // ── End Shadow Access ─────────────────────────────────────────────────
 
       if (!user || !passwordMatches(input.password, user.passwordHash)) return send(res, 401, { error: 'Incorrect staff email or password.' });
-      if (!validText(input.universityRegistrationNumber, 50)) return send(res, 400, { error: 'University registration number is required.' });
-      const staffRegistrationNumber = input.universityRegistrationNumber.trim();
-      if (user.universityRegistrationNumber && user.universityRegistrationNumber.toLowerCase() !== staffRegistrationNumber.toLowerCase()) return send(res, 401, { error: 'University registration number does not match this staff account.' });
-      if (!user.universityRegistrationNumber) user.universityRegistrationNumber = staffRegistrationNumber;
       recordLogin(data, 'staff', user); await writeData(data);
       const session = { type: 'staff', role: user.role, userId: user.id, createdAt: Date.now() };
       const token = createSessionToken(session); sessions.set(token, session);

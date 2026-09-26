@@ -2,8 +2,7 @@ import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import AdminDashboard from "./components/AdminDashboard";
 import TeamLogin from "./components/TeamLogin";
-import TeamDashboard from "./components/TeamDashboard";
-import AccessPortal from "./components/AccessPortal";
+import ParticipantDashboard from "./components/ParticipantDashboard";
 import { useLiveMatches } from "./hooks/useLiveMatches";
 import { AnnouncementBannerDisplay } from "./components/AnnouncementManager";
 import "./styles.css";
@@ -48,10 +47,9 @@ function App() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [isStaff, setIsStaff] = useState(() => Boolean(localStorage.getItem("aagaz-admin-token")));
   const [teamLoginOpen, setTeamLoginOpen] = useState(false);
   const [teamUser, setTeamUser] = useState(() => readParticipantProfile());
-  const [loginChoice, setLoginChoice] = useState(null);
-  const [accessMode, setAccessMode] = useState(() => localStorage.getItem("aagaz-admin-token") ? "staff" : localStorage.getItem("aagaz-participant-token") && readParticipantProfile() ? "team" : null);
   const [adminToken, setAdminToken] = useState(
     () => localStorage.getItem("aagaz-admin-token") || "",
   );
@@ -89,8 +87,13 @@ function App() {
   function scrollTo(id) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   }
-
-  if (!accessMode) return <><AccessPortal onTeamLogin={() => setLoginChoice("team")} onStaffLogin={() => setLoginChoice("staff")} />{loginChoice === "team" && <TeamLogin onClose={() => setLoginChoice(null)} onMessage={setMessage} onLogin={(team) => { setTeamUser(team); setAccessMode("team"); setLoginChoice(null); }} />}{loginChoice === "staff" && <AdminDashboard token={adminToken} onToken={setAdminToken} onAuthenticated={() => { setAccessMode("staff"); setLoginChoice(null); }} onClose={() => setLoginChoice(null)} onMessage={setMessage} />}{message && <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-lg border border-cyan/30 bg-navy px-5 py-4 text-sm text-slate-200">{message}</div>}</>;
+  function logoutStaff() {
+    if (adminToken) fetch("/api/admin/logout", { method: "POST", headers: { Authorization: `Bearer ${adminToken}` } }).catch(() => {});
+    localStorage.removeItem("aagaz-admin-token");
+    setAdminToken("");
+    setIsStaff(false);
+    setAdminOpen(false);
+  }
 
   return (
     <div className="min-h-screen bg-ink text-white">
@@ -142,18 +145,21 @@ function App() {
             </button>
           </nav>
           <div className="flex items-center gap-3">
-                <button
+            {teamUser && <button onClick={() => scrollTo("participant-dashboard")} className="hidden text-xs font-black uppercase tracking-widest text-cyan sm:block">My dashboard</button>}
+            {isStaff && <button onClick={() => setAdminOpen(true)} className="hidden text-xs font-black uppercase tracking-widest text-cyan sm:block">Staff workspace</button>}
+            {isStaff && <button onClick={logoutStaff} className="hidden text-xs font-black uppercase tracking-widest text-slate-400 transition hover:text-cyan sm:block">Sign out</button>}
+            {!isStaff && !teamUser && !adminOpen && <button
                   onClick={() => setTeamLoginOpen(true)}
                   className="hidden text-xs font-black uppercase tracking-widest text-slate-400 transition hover:text-cyan sm:block"
                 >
                   Participant login
-                </button>
-                <button
+                </button>}
+                {!isStaff && !teamUser && !adminOpen && <button
               onClick={() => setAdminOpen(true)}
               className="hidden text-xs font-black uppercase tracking-widest text-slate-400 transition hover:text-cyan sm:block"
             >
               Organiser login
-            </button>
+            </button>}
             <button
               onClick={() => setSelectedTournament(data.tournaments[0])}
               className="rounded-lg bg-cyan px-4 py-2.5 text-xs font-black uppercase tracking-wider text-ink transition hover:bg-white"
@@ -388,8 +394,10 @@ function App() {
       {selectedTournament && (
         <RegistrationModal
           tournament={selectedTournament}
+          participant={teamUser}
           onClose={() => setSelectedTournament(null)}
           onMessage={setMessage}
+          onRegistered={() => setTeamUser((current) => current ? ({ ...current }) : current)}
         />
       )}
       {selectedEvent && (
@@ -405,8 +413,8 @@ function App() {
           onToken={setAdminToken}
           onClose={() => setAdminOpen(false)}
           onMessage={setMessage}
-          onAuthenticated={() => setAccessMode("staff")}
-          onLogout={() => { setAdminToken(""); setAdminOpen(false); setAccessMode(null); }}
+          onAuthenticated={() => setIsStaff(true)}
+          onLogout={() => { setAdminToken(""); setIsStaff(false); setAdminOpen(false); }}
         />
       )}
       {teamLoginOpen && (
@@ -416,7 +424,7 @@ function App() {
           onLogin={(team) => { setTeamUser(team); setTeamLoginOpen(false); }}
         />
       )}
-      {teamUser && <TeamDashboard team={teamUser} onLogout={() => { setTeamUser(null); setAccessMode(null); }} />}
+      {teamUser && <ParticipantDashboard participant={teamUser} tournaments={data.tournaments} events={data.events} liveMatches={liveMatches} announcement={announcement} gallery={data.gallery} onRegister={setSelectedTournament} onLogout={() => setTeamUser(null)} />}
       {message && (
         <div className="fixed bottom-5 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-lg border border-cyan/30 bg-navy px-5 py-4 text-sm text-slate-200 shadow-2xl">
           {message}
@@ -630,14 +638,14 @@ function Empty({ label }) {
     </div>
   );
 }
-function RegistrationModal({ tournament, onClose, onMessage }) {
+function RegistrationModal({ tournament, participant, onClose, onMessage, onRegistered }) {
   const [form, setForm] = useState({
-    name: "",
-    email: "",
+    name: participant?.name || "",
+    email: participant?.email || "",
     course: "",
-    universityRegistrationNumber: "",
+    universityRegistrationNumber: participant?.universityRegistrationNumber || "",
     entryType: tournament.format.includes("Individual") ? "Individual" : "Team",
-    phone: "",
+    phone: participant?.phoneNumber || "",
   });
   const [busy, setBusy] = useState(false);
   async function submit(event) {
@@ -655,6 +663,7 @@ function RegistrationModal({ tournament, onClose, onMessage }) {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
       onMessage(result.message);
+      onRegistered?.();
       onClose();
     } catch (error) {
       onMessage(error.message);
