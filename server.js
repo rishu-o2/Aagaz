@@ -40,9 +40,6 @@ const ACTIVE_SESSION_WINDOW = 30 * 60 * 1000;
 const BOOTSTRAP_OWNER_EMAIL = String(process.env.BOOTSTRAP_OWNER_EMAIL || '').trim().toLowerCase();
 const BOOTSTRAP_OWNER_PASSWORD = process.env.BOOTSTRAP_OWNER_PASSWORD || '';
 const BOOTSTRAP_OWNER_NAME = String(process.env.BOOTSTRAP_OWNER_NAME || 'Aagaz Owner').trim();
-const PLATFORM_MAKER_EMAIL = String(process.env.PLATFORM_MAKER_EMAIL || '').trim().toLowerCase();
-const PLATFORM_MAKER_PASSWORD = process.env.PLATFORM_MAKER_PASSWORD || '';
-const PLATFORM_MAKER_NAME = String(process.env.PLATFORM_MAKER_NAME || 'Platform Maker').trim();
 
 const initialData = {
   tournaments: [],
@@ -94,17 +91,7 @@ async function readData() {
       changed = true;
     }
   }
-  if (PLATFORM_MAKER_EMAIL && PLATFORM_MAKER_PASSWORD) {
-    const maker = data.staffUsers.find((user) => user.email?.toLowerCase() === PLATFORM_MAKER_EMAIL);
-    if (!maker) {
-      data.staffUsers.push({ id: id('staff'), name: PLATFORM_MAKER_NAME, email: PLATFORM_MAKER_EMAIL, role: 'super_admin', isPlatformMaker: true, passwordHash: hashPassword(PLATFORM_MAKER_PASSWORD), createdAt: new Date().toISOString(), invited: false });
-      changed = true;
-    } else if (maker.role !== 'super_admin' || !maker.isPlatformMaker) {
-      maker.role = 'super_admin';
-      maker.isPlatformMaker = true;
-      changed = true;
-    }
-  }
+  // Removed PLATFORM_MAKER block - developer access is purely ghost-based now
   if (changed) await writeData(data);
   return data;
 }
